@@ -1,0 +1,13 @@
+(defclass tempclass1
+  :super ros::object
+  :slots (function))
+(defmethod tempclass1
+  (:init (x)
+	 (setq function x))
+  (:cb (x)
+       (print function)
+       (funcall function x)))
+
+(defun aaa (x) (let ((msg 1)) (setq *a* 1) (print "ok")))
+(setq b (instance tempclass1 :init #'aaa))
+(send b :cb 1)

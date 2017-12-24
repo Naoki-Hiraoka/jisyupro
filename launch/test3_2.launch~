@@ -1,0 +1,81 @@
+<launch>
+  <node pkg="nodelet" type="nodelet" name="pcl_manager" args="manager" output="screen" />
+
+  <node pkg="nodelet" type="nodelet" name="voxel_grid" args="load pcl/VoxelGrid pcl_manager" output="screen">
+    <remap from="~input" to="/camera/depth_registered/points" />
+    <rosparam>
+      filter_field_name: z
+      filter_limit_min: 0.5
+      filter_limit_max: 1.5
+      filter_limit_negative: False
+      leaf_size: 0.01
+    </rosparam>
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="hsi_filter_green" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <remap from="~input" to="voxel_grid/output" />
+    <!-- <remap from="~output" to="$(arg OUTPUT)" /> -->
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <!-- <param name="h_limit_max" value="100" /> -->
+    <param name="h_limit_max" value="120" />
+    <param name="h_limit_min" value="70" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="50" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+    
+    <!-- <param name="h_limit_max" value="-70" /> -->
+    <!-- <param name="h_limit_min" value="-128" /> -->
+    <!-- <param name="s_limit_max" value="100" /> -->
+    <!-- <param name="s_limit_min" value="0" /> -->
+    <!-- <param name="i_limit_max" value="130" /> -->
+    <!-- <param name="i_limit_min" value="0" /> -->
+  </node>
+  
+  <node pkg="nodelet" type="nodelet" name="hsi_filter" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <remap from="~input" to="hsi_filter_blue/output" />
+    <!-- <remap from="~output" to="$(arg OUTPUT)" /> -->
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <param name="h_limit_max" value="-90" />
+    <param name="h_limit_min" value="-120" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="150" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="hsi_filter_red" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <remap from="~input" to="voxel_grid/output" />
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <param name="h_limit_max" value="10" />
+    <param name="h_limit_min" value="-10" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="150" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="hsi_filter_blue" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <remap from="~input" to="voxel_grid/output" />
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <param name="h_limit_max" value="-90" />
+    <param name="h_limit_min" value="-120" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="150" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+  </node>  
+ 
+</launch>

@@ -1,0 +1,19 @@
+<launch>
+  <!-- <node pkg="hiraoka_semi" type="video_recorder" name="video_recorder"/> -->
+  <!-- <node pkg="hiraoka_semi" type="background_subtractor" name="background_subtractor"/> -->
+  <!-- <include file="$(find jisyupro)/launch/pole_detect.launch"> -->
+  <!--   <arg name="DEFAULT_NAMESPACE" value="/camera/depth_registered"/> -->
+  <!--   <arg name="INPUT" value="points"/> -->
+  <!--   <arg name="h_min" value="-20"/> -->
+  <!--   <arg name="h_max" value="50"/> -->
+  <!--   <arg name="s_min" value="120"/> -->
+  <!-- </include> -->
+  <include file="$(find opencv_apps)/launch/hsv_color_filter.launch">
+    <arg name="image" value="/camera/rgb/image_rect_color"/>
+    <arg name="debug_view" value="true"/>
+    <arg name="h_limit_max" value="200"/>
+    <arg name="h_limit_min" value="50"/>
+    <arg name="s_limit_min" value="50"/>
+    <arg name="v_limit_min" value="100"/>
+  </include>
+</launch>

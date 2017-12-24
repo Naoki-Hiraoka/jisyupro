@@ -1,0 +1,8 @@
+# Define the goal
+jisyupro/Int8Array board
+Int32 mycolor
+---
+# Define the result
+Int32 newpos
+---
+# Define a feedback message

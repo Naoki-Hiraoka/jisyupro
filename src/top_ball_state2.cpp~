@@ -1,0 +1,62 @@
+#include <ros/ros.h>
+#include <opencv2/opencv.hpp>
+#include<actionlib/server/simple_action_server.h>
+#include<jisyupro/Int8Array.h>
+#include<jisyupro/Int32Stamped.h>
+#include<vector>
+#include<string>
+#include<cmath>
+
+using namespace std;
+using namespace cv;
+
+class MyCvPkg{
+  vector<ros::Subscriber> sub_;
+  ros::Publisher pub_;
+  ros::NodeHandle nh_;
+  ros::NodeHandle private_nh_;
+
+  vector<Int32Stamped> red_state(64);
+  vector<Int32Stamped> blue_state(64);
+
+  
+  
+  void Callback(const jisyupro::Int32StampedConstPtr &msg,string color,int i,int j){
+    switch(color){
+    case "red":
+      red_state[i*4+j]=msg;
+      break;
+    case "blue":
+      blue_state[i*4+j]=msg;
+      break;
+    }
+    return;
+  }
+ 
+public:
+  MyCvPkg(): nh_{}, private_nh_("~") {
+    string input;
+    nh.getParam("input", input);
+    for(int i=0;i<16;i++){
+      for(int j=0;j<4;j++){
+	string topicname=input+"_red"+to_string(i)+"_"+to_string(j);
+	sub_.push_back(nh_.subscribe(topicname.c_str(),1,&MyCvPkg::Callback,this,"red",i,j));
+      }
+    }
+    for(int i=0;i<16;i++){
+      for(int j=0;j<4;j++){
+	string topicname=input+"_blue"+to_string(i)+"_"+to_string(j);
+	sub_.push_back(nh_.subscribe(topicname.c_str(),1,&MyCvPkg::Callback,this,"blue",i,j));
+      }
+    }
+    pub_ = private_nh_.advertise<jisyupro::Int8Array>("output",1);
+  }
+};
+
+int main(int argc,char **argv){
+  ros::init(argc,argv,"top_ball_state2");
+  MyCvPkg mcp{};
+  ros::spin();
+}
+
+

@@ -1,0 +1,68 @@
+<launch>
+  <arg name="color" default="red"/>
+  
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="0"/>
+  </include>
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="1"/>
+  </include>
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="2"/>
+  </include>
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="3"/>
+  </include>
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="4"/>
+  </include>
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="5"/>
+  </include>
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="6"/>
+  </include>
+  <include file="$(find jisyupro)/launch/ball_detector_unit.launch">
+    <arg name="color" value="$(arg color)"/>
+    <arg name="pos" value="7"/>
+  </include>
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="8"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="9"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="10"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="11"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="12"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="13"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="14"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector_unit.launch"> -->
+  <!--   <arg name="color" value="$(arg color)"/> -->
+  <!--   <arg name="pos" value="15"/> -->
+  <!-- </include> -->
+</launch>

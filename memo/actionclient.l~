@@ -1,0 +1,9 @@
+(ros::load-ros-manifest "actionlib_tutorials")
+(ros::roseus "fibonacci_client")
+(setq *c* (instance ros::simple-action-client :init
+		    "fibonacci" actionlib_tutorials::FibonacciAction)))
+(send *c* :wait-for-server)
+(setq goal (instance actionlib_tutorials::FibonacciActionGoal :init))
+(send goal :goal :order order)
+(send *c* :send-goal goal)
+(send *c* :wait-for-result)

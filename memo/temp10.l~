@@ -1,0 +1,154 @@
+同様の症状が出たので報告します。
+
+action serverは使っていませんが、
+setqの入った関数を、別のファイルやクラス内でシンボルにsetqしたものに対し、funcallをするとSegmentation Faultになりました。再現性はありませんが、条件を変えたりPCを再起動したりするうちに、Segmentation Faultになる代わりにnever returnになったこともありました。。
+
+https://github.com/jsk-ros-pkg/jsk_roseus/blob/35a504221d1e1e848cc8ce861dddd2e65c787350/roseus/euslisp/actionlib.l#L268
+の(funcall execute-cb self goal)が怪しいと思います。
+
+↓エラーにならない例
+```
+(print "1")
+
+(setq func1 #'(lambda (x) (setq *a* 1)))
+(funcall func1 1)
+
+(print "2")
+
+(defun func2 (x) (setq *a* x))
+(setq function #'func2)
+(funcall function 1)
+
+(print "3")
+
+```
+結果
+```
+mech-user@test1-pc:~/catkin_ws/src/jisyupro/memo$ roseus ./temp8.l
+configuring by "/opt/ros/kinetic/share/euslisp/jskeus/eus//lib/eusrt.l"
+;; readmacro ;; object ;; packsym ;; common ;; constants ;; stream ;; string ;;\
+loader ;; pprint ;; process ;; hashtab ;; array ;; mathtran ;; eusdebug ;; eus\
+foreign ;; coordinates ;; tty ;; history ;; toplevel ;; trans ;; comp ;; builti\
+ns ;; par ;; intersection ;; geoclasses ;; geopack ;; geobody ;; primt ;; compo\
+se ;; polygon ;; viewing ;; viewport ;; viewsurface ;; hid ;; shadow ;; bodyrel\
+;; dda ;; helpsub ;; eushelp ;; xforeign ;; Xdecl ;; Xgraphics ;; Xcolor ;; Xe\
+us ;; Xevent ;; Xpanel ;; Xitem ;; Xtext ;; Xmenu ;; Xscroll ;; Xcanvas ;; Xtop\
+;; Xapplwin
+connected to Xserver DISPLAY=:0
+X events are being asynchronously monitored.
+;; pixword ;; RGBHLS ;; convolve ;; piximage ;; pbmfile ;; image_correlation ;;\
+oglforeign ;; gldecl ;; glconst ;; glforeign ;; gluconst ;; gluforeign ;; glxc\
+onst ;; glxforeign ;; eglforeign ;; eglfunc ;; glutil ;; gltexture ;; glprim ;;\
+gleus ;; glview ;; toiv-undefined ;; fstringdouble irtmath irtutil irtc irtgeo\
+c irtgraph pgsql irtgeo euspqp pqp irtscene irtmodel irtdyna irtrobot irtsensor\
+irtbvh irtcollada irtpointcloud irtx eusjpeg euspng png irtimage irtglrgb
+;; extending gcstack 0x4dea9d0[16374] --> 0x5265760[32748] top=3d1c
+irtgl irtglc irtviewer
+EusLisp 9.23( 1.1.0) for Linux64 created on ip-172-30-1-103(Sat Nov 4 18:28:33 \
+								PST 2017)
+roseus ;; loading roseus("1.6.3") on euslisp((9.23 ip-172-30-1-103 Sat Nov 4 18\
+:28:33 PST 2017  1.1.0))
+eustf roseus_c_util "1"
+"2"
+"3"
+1.irteusgl$
+```
+
+↓Segmentation Faultになる例
+```
+(defclass tempclass1
+  :super ros::object
+  :slots (function))
+(defmethod tempclass1
+  (:init (x)
+	 (setq function x))
+  (:cb (x)
+       (print function)
+       (funcall function x)))
+
+(defun func (x) (setq *a* 1))
+(setq test (instance tempclass1 :init #'func))
+
+(print "(send b :cb 1)"
+       (send test :cb 1)
+       ```
+       結果
+       ```
+       mech-user@test1-pc:~/catkin_ws/src/jisyupro/memo$ roseus ./temp6.l
+       configuring by "/opt/ros/kinetic/share/euslisp/jskeus/eus//lib/eusrt.l"
+       ;; readmacro ;; object ;; packsym ;; common ;; constants ;; stream ;; string ;;\
+       loader ;; pprint ;; process ;; hashtab ;; array ;; mathtran ;; eusdebug ;; eus\
+       foreign ;; coordinates ;; tty ;; history ;; toplevel ;; trans ;; comp ;; builti\
+       ns ;; par ;; intersection ;; geoclasses ;; geopack ;; geobody ;; primt ;; compo\
+       se ;; polygon ;; viewing ;; viewport ;; viewsurface ;; hid ;; shadow ;; bodyrel\
+       ;; dda ;; helpsub ;; eushelp ;; xforeign ;; Xdecl ;; Xgraphics ;; Xcolor ;; Xe\
+       us ;; Xevent ;; Xpanel ;; Xitem ;; Xtext ;; Xmenu ;; Xscroll ;; Xcanvas ;; Xtop\
+       ;; Xapplwin
+       connected to Xserver DISPLAY=:0
+       X events are being asynchronously monitored.
+       ;; pixword ;; RGBHLS ;; convolve ;; piximage ;; pbmfile ;; image_correlation ;;\
+       oglforeign ;; gldecl ;; glconst ;; glforeign ;; gluconst ;; gluforeign ;; glxc\
+       onst ;; glxforeign ;; eglforeign ;; eglfunc ;; glutil ;; gltexture ;; glprim ;;\
+       gleus ;; glview ;; toiv-undefined ;; fstringdouble irtmath irtutil irtc irtgeo\
+       c irtgraph pgsql irtgeo euspqp pqp irtscene irtmodel irtdyna irtrobot irtsensor\
+       irtbvh irtcollada irtpointcloud irtx eusjpeg euspng png irtimage irtglrgb
+       ;; extending gcstack 0x55ac9d0[16374] --> 0x5a27760[32748] top=3d1c
+       irtgl irtglc irtviewer
+       EusLisp 9.23( 1.1.0) for Linux64 created on ip-172-30-1-103(Sat Nov 4 18:28:33 \
+								       PST 2017)
+       roseus ;; loading roseus("1.6.3") on euslisp((9.23 ip-172-30-1-103 Sat Nov 4 18\
+       :28:33 PST 2017  1.1.0))
+eustf roseus_c_util "(send b :cb 1)"
+(lambda-closure func 22356272 0 (x) (setq *a* 1))
+;; Segmentation Fault.
+;; in (setq *a* 1)
+;; You are still in a signal handler.
+;;Try reset or throw to upper level as soon as possible.
+;; code=1892612784 x=70cef980 addr=4
+Fatal:
+```
+
+↓Segmentation Faultになる例
+```
+;;temp7_2.l
+(setq func #'(lambda (x) (setq *a* x)))
+```
+```
+;;temp7.l
+(load "temp7_2.l")
+(funcall func 1)
+```
+結果
+```
+mech-user@test1-pc:~/catkin_ws/src/jisyupro/memo$ mech-user@test1-pc:~/catkin_w\
+s/src/jisyupro/memo$ roseus ./temp7.l
+configuring by "/opt/ros/kinetic/share/euslisp/jskeus/eus//lib/eusrt.l"
+;; readmacro ;; object ;; packsym ;; common ;; constants ;; stream ;; string ;;\
+loader ;; pprint ;; process ;; hashtab ;; array ;; mathtran ;; eusdebug ;; eus\
+foreign ;; coordinates ;; tty ;; history ;; toplevel ;; trans ;; comp ;; builti\
+ns ;; par ;; intersection ;; geoclasses ;; geopack ;; geobody ;; primt ;; compo\
+se ;; polygon ;; viewing ;; viewport ;; viewsurface ;; hid ;; shadow ;; bodyrel\
+;; dda ;; helpsub ;; eushelp ;; xforeign ;; Xdecl ;; Xgraphics ;; Xcolor ;; Xe\
+us ;; Xevent ;; Xpanel ;; Xitem ;; Xtext ;; Xmenu ;; Xscroll ;; Xcanvas ;; Xtop\
+;; Xapplwin
+connected to Xserver DISPLAY=:0
+X events are being asynchronously monitored.
+;; pixword ;; RGBHLS ;; convolve ;; piximage ;; pbmfile ;; image_correlation ;;\
+oglforeign ;; gldecl ;; glconst ;; glforeign ;; gluconst ;; gluforeign ;; glxc\
+onst ;; glxforeign ;; eglforeign ;; eglfunc ;; glutil ;; gltexture ;; glprim ;;\
+gleus ;; glview ;; toiv-undefined ;; fstringdouble irtmath irtutil irtc irtgeo\
+c irtgraph pgsql irtgeo euspqp pqp irtscene irtmodel irtdyna irtrobot irtsensor\
+irtbvh irtcollada irtpointcloud irtx eusjpeg euspng png irtimage irtglrgb
+;; extending gcstack 0x62159d0[16374] --> 0x6690760[32748] top=3d1c
+irtgl irtglc irtviewer
+EusLisp 9.23( 1.1.0) for Linux64 created on ip-172-30-1-103(Sat Nov 4 18:28:33 \
+								PST 2017)
+roseus ;; loading roseus("1.6.3") on euslisp((9.23 ip-172-30-1-103 Sat Nov 4 18\
+:28:33 PST 2017  1.1.0))
+eustf roseus_c_util ;; Segmentation Fault.
+;; in (setq *a* x)
+;; You are still in a signal handler.
+;;Try reset or throw to upper level as soon as possible.
+;; code=-865146832 x=cc6ee700 addr=4
+Fatal
+```

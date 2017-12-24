@@ -1,0 +1,8 @@
+# Define the goal
+bool start  
+---
+# Define the result
+jisyupro/Int8Array result
+#uint32 result
+---
+# Define a feedback message

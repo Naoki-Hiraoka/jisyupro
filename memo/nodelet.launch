@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="nodelet" type="nodelet" name="pcl_manager" args="manager" output="screen" />
+
+  <node pkg="nodelet" type="nodelet" name="r200" args="load realsense_camera/R200Nodelet pcl_manager"/>
+
+</launch>

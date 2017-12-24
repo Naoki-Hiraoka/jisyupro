@@ -1,0 +1,152 @@
+#include<ros/ros.h>
+#include<opencv2/opencv.hpp>
+#include<image_transport/image_transport.h>
+#include<cv_bridge/cv_bridge.h>
+#include<jisyupro/Vector3Array.h>
+#include<sensor_msgs/CameraInfo.h>
+#include<vector>
+#include<cmath>
+#include<iostream>
+
+using namespace std;
+using namespace cv;
+
+int seqnum=2;
+int contnum=seqnum*seqnum;
+
+class ImageConverter{
+  ros::NodeHandle nh_;
+  ros::NodeHandle private_nh_;
+  image_transport::ImageTransport it_;
+  image_transport::ImageTransport private_it_;
+  image_transport::Subscriber img_sub_;
+  ros::Publisher pub_;
+  ros::Subscriber sub_;
+  
+  Mat K_inv;
+  
+public:  
+  void image_callback(const sensor_msgs::ImageConstPtr &msg){
+    cv_bridge::CvImagePtr in_ptr=cv_bridge::toCvCopy(msg,"bgr8");
+    Mat img=in_ptr->image;
+    Mat hsv_img{};
+    cvtColor(img,hsv_img,COLOR_BGR2HSV);
+    Mat mask{};
+    //hsvフィルタ
+    inRange(hsv_img,Vec3b{170,100,0},Vec3b{180,255,255},mask);
+    //ノイズを消す
+    morphologyEx(mask,mask,MORPH_OPEN,getStructuringElement(MORPH_RECT,Size{3,3}));
+    //穴を埋める
+    morphologyEx(mask,mask,MORPH_CLOSE,getStructuringElement(MORPH_RECT,Size{3,3}));
+    //contourをとる
+    vector<vector<Point>> conts;
+    findContours(mask,conts,CV_RETR_EXTERNAL,CV_CHAIN_APPROX_SIMPLE);
+    //面積が小さいものはノイズ
+    vector<vector<Point>> bigconts;
+    for(auto& cont:conts){
+      if(contourArea(cont)>15)bigconts.push_back(cont);
+    }
+    //正しい数認識できてなければ間違い
+    if(bigconts.size()!=contnum)return;
+
+    //デバッグ用
+    if(bigconts.size()==contnum){
+      Point prepoint;
+      for(auto &cont:bigconts){
+	prepoint=Point{-1,-1};
+	for(auto point:cont){
+	  if(prepoint!=Point{-1,-1}){
+	    line(img,prepoint,point,Scalar{0,255,0});
+	  }
+	  prepoint=point;
+	}
+      }
+      imshow("debug2",img);
+      waitKey(3);
+    }
+    
+    //中心の座標を取得
+    vector<Point2f> centers;
+    for(auto& cont:bigconts){
+      float temp;
+      Point2f center;
+      minEnclosingCircle(cont,center,temp);
+      centers.push_back(center);
+    }
+    //外接する四角形を考え、その領域を16分割しその中にある点を探すことで各ポールと板の座標を対応させる。カメラが水平であることを前提
+    RotatedRect board=minAreaRect(centers);
+    Rect_<float> boardpart{Point2f{-1,-1},Size2f{board.size.width/(seqnum-1),board.size.height/(seqnum-1)}};//カメラが盤にほぼ平行であることも前提
+    float theta=M_PI*board.angle/180;
+    Point2f dwidth{boardpart.width*cos(theta),boardpart.width*sin(theta)};
+    Point2f dheight{-boardpart.height*sin(theta),boardpart.height*cos(theta)};
+    vector<Point2f> poles(contnum,Point2f{-1,-1});
+    for(int j=0;j<seqnum;j++){
+      for(int i=0;i<seqnum;i++){
+	boardpart.x=board.center.x+dwidth.x*(i-seqnum/2.0)+dheight.x*(j-seqnum/2.0);
+	boardpart.y=board.center.y+dwidth.y*(i-seqnum/2.0)+dheight.y*(j-seqnum/2.0);
+	for(auto& point:centers){
+	  if(boardpart.contains(point)){
+	    if(poles[i+j*seqnum].x!=-1)return;
+	    poles[i+j*seqnum]=point;
+	  }
+	}
+      }
+    }
+    for(auto& pole:poles){
+      if(pole.x==-1)return;
+    }
+    //cameramatrixを適用
+    if(K_inv.empty())return;
+    jisyupro::Vector3Array outmsg;
+    outmsg.header=msg->header;
+    Mat poleMat=Mat::ones(3,1,CV_32F);
+
+    cout<<"ここから"<<endl;
+    for(auto& pole:poles){
+      poleMat.at<float>(0,0)=pole.x;
+      poleMat.at<float>(1,0)=pole.y;
+      Mat posMat=K_inv*poleMat;
+      cout<<K_inv<<endl<<poleMat<<endl<<posMat<<endl<<endl;;
+      geometry_msgs::Vector3 pos;
+      pos.x=posMat.at<float>(0);
+      pos.y=posMat.at<float>(1);
+      pos.z=posMat.at<float>(2);
+      outmsg.vector3s.push_back(pos);
+    }
+    
+    pub_.publish(outmsg);
+    return;
+  }
+
+  void info_callback(sensor_msgs::CameraInfo msg){
+    if(K_inv.empty()){
+      Mat tempK=Mat::zeros(3,3,CV_32F);
+      for(int i=0;i<3;i++){
+	for(int j=0;j<3;j++){
+	  tempK.at<float>(j,i)=msg.K[i+j*3];
+	}
+      }
+      K_inv=tempK.inv();
+    }
+    return;
+  }
+  
+  ImageConverter(): nh_{},private_nh_("~") ,it_(nh_),private_it_(private_nh_)  {
+    pub_ = private_nh_.advertise<jisyupro::Vector3Array>("output",1);
+    img_sub_ = it_.subscribe("image",3,&ImageConverter::image_callback,this);
+    sub_ = nh_.subscribe<sensor_msgs::CameraInfo>("camerainfo",3,&ImageConverter::info_callback,this);
+    namedWindow("debug2");
+  }
+};
+
+int main (int argc,char** argv){
+  ros::init(argc,argv,"pole_detector");
+  ImageConverter ic{};
+  ros::Rate loop_rate(30);
+  
+  while(ros::ok()){
+    ros::spinOnce();
+    loop_rate.sleep();
+  }
+  return 0;
+}

@@ -1,0 +1,16 @@
+# Define the goal
+#通常の更新
+bool update 
+#場所を教示
+bool teach
+int32 newpos 
+int8 color
+#一つ前のupdate/newposを戻す
+bool undo
+#内部状態を完全に置き換える
+jisyupro/Int8Array new_state 
+---
+# Define the result
+jisyupro/Int8Array board_state #内部状態
+---
+# Define a feedback message

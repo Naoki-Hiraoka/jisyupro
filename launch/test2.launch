@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="nodelet" type="nodelet" name="temp_manager" args="manager" output="screen" />
+
+  <node pkg="nodelet" type="nodelet" name="top_ball_state" args="load jisyupro/top_ball_state temp_manager" output="screen"/>
+</launch>

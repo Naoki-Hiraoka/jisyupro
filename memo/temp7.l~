@@ -1,0 +1,2 @@
+(load "temp7_2.l")
+(funcall func 1)

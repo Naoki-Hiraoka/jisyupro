@@ -1,0 +1,25 @@
+#!/usr/bin/env roseus
+
+(ros::load-ros-manifest "roseus")
+(ros::roseus "hoge")
+(ros::load-ros-manifest "std_msgs")
+
+(defun cb (msg)
+  (print msg)
+  (setq *a* msg))
+
+;;(ros::subscribe "/image_time_diff/start" std_msgs::Header
+;; 		#'(lambda (msg)
+;;		    (print msg)
+;;		    (setq *a* msg)))
+
+;;(ros::subscribe "/image_time_diff/start" std_msgs::Header
+;;		#'cb)
+
+
+(ros::rate 10)
+(do-until-key
+ (ros::spin-once)
+ (ros::sleep)
+ )
+(exit)

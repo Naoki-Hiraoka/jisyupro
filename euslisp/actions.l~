@@ -1,0 +1,83 @@
+#!/usr/bin/env/roseus
+
+(ros::load-ros-manifest "roseus")
+(ros::load-ros-manifest "jisyupro")
+(when (require "package://dxl_armed_turtlebot/euslisp/dxl-armed-turtlebot-interface.l")
+  (dxl-armed-turtlebot-init))
+(require "package://jisyupro/euslisp/board_detector.l")
+
+;;end-coordsを意味のある位置に
+(send (send *dxl-armed-turtlebot* :arm :end-coords) :move-to (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :translate (float-vector 117.1 5 -13.5))) :world)
+
+;;inverse-kinematics。
+;;poleの根本のposを入れる。それの150mm以上上に移動する。
+;;z座標が低すぎると解けない場合があるので、失敗したら目標z座標を上げていく
+(defun pole-inverse-kinematics (target)
+  (let (temp-target
+	(start-angle-vector (send *dxl-armed-turtlebot* :angle-vector)))
+    (send *dxl-armed-turtlebot* :reset-pose)
+    (dotimes (i 20)
+      (print i)
+      (setq temp-target (v+ target (float-vector 0.0 0.0 (+ (* i 10) 150)))) 
+      (setq result (send *dxl-armed-turtlebot* :inverse-kinematics (make-cascoords :pos temp-target :rpy (float-vector 0 0 pi)) :rotation-axis :z :rthre (deg2rad 20) :thre 1 :link-list (send *dxl-armed-turtlebot* :link-list (send *dxl-armed-turtlebot* :arm :end-coords :parent)) :revert-if-fail t :dump-command nil))
+      (when result
+	(print (send *dxl-armed-turtlebot* :arm :end-coords))
+	(return-from pole-inverse-kinematics result))
+      )
+    (send *dxl-armed-turtlebot* :angle-vector start-angle-vector)
+    nil
+    )
+  )
+
+(setq *place-target* 0)
+;;place
+;;置きたい座標を0~15で指定する。
+;;アームを動かし、手を離し、戻る。
+(defun place (target)
+  ;;inverse-kinametics成功か失敗かで分岐
+  (if (pole-inverse-kinematics (send (elt *pole-list* target) :worldpos))
+      (progn
+	(setq *pole-update* nil);;カメラが動いている間は座標を更新しない
+	(send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000)
+	(send *ri* :wait-interpolation)
+	(unless (send *ri* :simulation-modep)
+	  (send *ri* :stop-grasp))
+	(default-pose)
+	(setq *pole-update* t)
+	t
+	)
+    (progn ;;inverse-kinematicsに失敗したらnilを返す
+      nil)))
+
+;;placeを上手に使う関数。
+;;置きたい座標を0~15で指定する。
+;;inverse-kinematicsを解けるように移動する
+;;成功すればt
+(defun move-and-place (target)
+  (ros::spin-once)
+  ;;動かずに済むに越したことはない
+  (when (place target)
+    (return-from move-and-place t))
+  (dotimes ((i 3))
+    ;;x=400前後がちょうどよいので移動してから試す
+    (send *ri* :go-pos (/ (- (elt (send (elt *pole-list* target) :worldpos) 0) 400) 1000) 0)
+    (send *ri* :wait-interpolation)
+    (wait-board-detector-time)
+    (when (place target)
+      (return-from move-and-place t)))
+  ;;エラーを出すか(要検討)
+  nil)
+
+;;把持
+(defun start-grasp ()
+  (send *ri* :start-grasp :gain 1.0));;gainがdefaultでは0.5
+
+;;把持中かどうか
+(defun is-grasp-succeed ()
+  ;;完全に閉じてる->ダメ
+  (when (< (elt (send *ri* :actual-vector :gripper-controller) 0) -25)
+    (return-from is-grasp-succeed nil))
+  ;;目標角度と実際角度が同じ->ダメ
+  (when (< (- (elt (send *ri* :actual-vector :gripper-controller) 0) (elt (send *ri* :refeference-vector :gripper-controller) 0)) 3)
+    (return-from is-grasp-succeed nil))
+  t)

@@ -1,0 +1,184 @@
+<launch>
+  <node pkg="nodelet" type="nodelet" name="pcl_manager" args="manager" output="screen" />
+  
+  <include file="$(find realsense_camera)/launch/r200_nodelet_rgbd.launch">
+    <arg name="camera" value="realsense_camera"/>
+    <!-- <arg name="manager" value="pcl_manager"/> -->
+  </include>
+  
+  <node pkg="nodelet" type="nodelet" name="voxel_grid" args="load pcl/VoxelGrid pcl_manager" output="screen">
+    <remap from="~input" to="/realsense_camera/depth_registered/points" />
+    <rosparam>
+      filter_field_name: z
+      filter_limit_min: 0.5
+      filter_limit_max: 1.5
+      filter_limit_negative: False
+      leaf_size: 0.01
+    </rosparam>
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="passthrough_green"  respawn="true"
+	args="load pcl/PassThrough pcl_manager" >
+    <remap from="~input" to="/voxel_grid/output" />
+    <rosparam subst_value="true">
+      filter_field_name: z
+      filter_limit_min: 0.5
+      filter_limit_max: 1.50
+      filter_limit_negative: False
+    </rosparam>
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="hsi_filter_green_pre" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <remap from="~input" to="/voxel_grid/output" />
+    <!-- <remap from="~output" to="$(arg OUTPUT)" /> -->
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <!-- <param name="h_limit_max" value="100" /> -->
+    <param name="h_limit_max" value="120" />
+    <param name="h_limit_min" value="70" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="50" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+    
+    <!-- <param name="h_limit_max" value="-70" /> -->
+    <!-- <param name="h_limit_min" value="-128" /> -->
+    <!-- <param name="s_limit_max" value="100" /> -->
+    <!-- <param name="s_limit_min" value="0" /> -->
+    <!-- <param name="i_limit_max" value="130" /> -->
+    <!-- <param name="i_limit_min" value="0" /> -->
+  </node>
+  
+  <node pkg="nodelet" type="nodelet" name="hsi_filter_green" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <!-- <remap from="~input" to="/passthrough_green/output" /> -->
+    <remap from="~input" to="/hsi_filter_green_pre/output" />
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <!-- <param name="h_limit_max" value="100" /> -->
+    <param name="h_limit_max" value="120" />
+    <param name="h_limit_min" value="70" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="50" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+    
+    <!-- <param name="h_limit_max" value="-70" /> -->
+    <!-- <param name="h_limit_min" value="-128" /> -->
+    <!-- <param name="s_limit_max" value="100" /> -->
+    <!-- <param name="s_limit_min" value="0" /> -->
+    <!-- <param name="i_limit_max" value="130" /> -->
+    <!-- <param name="i_limit_min" value="0" /> -->
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="normal_estimation"  respawn="true"
+	args="load jsk_pcl/NormalEstimationOMP pcl_manager" >
+    <remap from="~input" to="hsi_filter_green/output" />
+    <rosparam>
+      k_search: 0
+      radius_search: 0.05
+    </rosparam>
+  </node>
+  
+  <node pkg="nodelet" type="nodelet" name="multi_plane_estimate"  respawn="true"
+	args="load jsk_pcl/RegionGrowingMultiplePlaneSegmentation pcl_manager" >
+    <remap from="~input" to="hsi_filter_green/output" />
+    <remap from="~input_normal" to="normal_estimation/output" />
+    <rosparam subst_value="true">
+      min_area: 0.05
+    </rosparam>
+  </node>
+
+  <node pkg="jisyupro" type="board_detector" name="board_detector" respawn="true">
+    <remap from="input_polygon" to="/multi_plane_estimate/output/polygons"/>
+    <remap from="input_coefficient" to="/multi_plane_estimate/output/coefficients"/>
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="hsi_filter_red" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <remap from="~input" to="voxel_grid/output" />
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <param name="h_limit_max" value="10" />
+    <param name="h_limit_min" value="-10" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="150" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="hsi_filter_blue" respawn="true"
+        args="load jsk_pcl/HSIColorFilter pcl_manager" output="screen">
+    <remap from="~input" to="voxel_grid/output" />
+    <rosparam>
+      use_indices: false
+    </rosparam>
+    <param name="h_limit_max" value="-70" />
+    <param name="h_limit_min" value="-120" />
+    <param name="s_limit_max" value="255" />
+    <param name="s_limit_min" value="150" />
+    <param name="i_limit_max" value="255" />
+    <param name="i_limit_min" value="0" />
+  </node>  
+ 
+  <!-- <include file="$(find jisyupro)/launch/ball_detector.launch"> -->
+  <!--   <arg name="color" value="red"/> -->
+  <!-- </include> -->
+  <!-- <include file="$(find jisyupro)/launch/ball_detector.launch"> -->
+  <!--   <arg name="color" value="blue"/> -->
+  <!-- </include> -->
+  <node pkg="nodelet" type="nodelet" name="multi_plane_extraction_red" respawn="true"
+	args="load jisyupro/MultiPlaneExtraction pcl_manager">
+    <remap from="~input" to="hsi_filter_red/output"/>
+    <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/>
+    <remap from="~input_polygons" to="board_detector/polygon2"/>
+    <!-- <remap from="~input_polygons" to="/multi_plane_estimate/output/polygons"/> -->
+    <rosparam subst_value="true">
+      min_height: -0.135
+      max_height: -0.015
+      use_indices: False
+      use_coefficients: False
+      use_sensor_frame: False
+      height0: 0.015
+      height1: 0.045
+      height2: 0.075
+      height3: 0.105
+      height4: 0.135
+    </rosparam>
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="multi_plane_extraction_blue" respawn="true"
+	args="load jisyupro/MultiPlaneExtraction pcl_manager">
+    <remap from="~input" to="hsi_filter_blue/output"/>
+    <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/>
+    <remap from="~input_polygons" to="board_detector/polygon2"/>
+    <!-- <remap from="~input_polygons" to="/multi_plane_estimate/output/polygons"/> -->
+    <rosparam subst_value="true">
+      min_height: -0.135
+      max_height: -0.015
+      use_indices: False
+      use_coefficients: False
+      use_sensor_frame: False
+      height0: 0.015
+      height1: 0.045
+      height2: 0.075
+      height3: 0.105
+      height4: 0.135
+    </rosparam>
+  </node>
+
+  <node pkg="jisyupro" type="board_state_recorder" name="board_state_recorder" respawn="true">
+    <remap from="input_red" to="multi_plane_extraction_red/output_histgram"/>
+    <remap from="input_blue" to="multi_plane_extraction_blue/output_histgram"/>
+    <rosparam subst_value="true">
+      thre: 20
+    </rosparam>
+  </node>
+
+  <node pkg="jisyupro" type="think" name="think" respawn="true"/>
+
+</launch>

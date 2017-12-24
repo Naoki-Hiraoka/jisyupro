@@ -1,0 +1,6 @@
+(load "./temp5_2.l")
+
+(defun test1 (function)
+  (let ((msg 1))
+    (funcall function msg)))
+(test1 sharp-lambda2)

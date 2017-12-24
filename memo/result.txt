@@ -1,0 +1,109 @@
+直接の関連があるかは分かりませんが、自分のPCでも同様の現象が起こりました。
+#'関連でSegmentation Faultやnever rerurnが発生します。
+
+どういう場合に発生したのかをまとめました。
+
+<発生する必要条件>
+
+```
+(defun func (x) (print "ok"))
+(setq function #'func)
+```
+または、
+```
+(setq function #'(lambda (x) (print "ok")))
+```
+によって#'したものをsetqするプログラムをあるファイルtemp.lに書き、
+(#'でなく'を使うと発生しない)
+(setqを介さないと発生しない)
+```
+(load "temp.l")
+(funcall function 1)
+```
+と、loadしてfuncallすること。
+(temp.l内でfuncallしても発生しない)
+
+<発生する必要条件終わり>
+
+
+さらに、5つの条件の組み合わせによって、Segmentation Faultになるかnever returnになるか何も問題が起こらないかが変わりました。
+
+<条件1 setq>
+```
+(defun func (x) (setq *var* x))
+(setq function #'func)
+```
+または、
+```
+(setq function #'(lambda (x) (setq *var* x)))
+```
+のように、functionの中でsetqをする/しない。
+
+<条件2 let>
+'''
+(let ((msg 1)) (funcall function msg))
+'''
+のように、letの中でfuncallする/しない。
+
+<条件3 defun>
+'''
+(defun test (x)
+    (funcall x 1))
+(test function)
+'''
+のように、関数の中でfuncallする/しない。
+
+<条件4 lambda>
+```
+(setq function #'(lambda (x) (print "ok")))
+```
+とlambdaを使うか、
+```
+(defun func (x) (print "ok"))
+(setq function #'func)
+```
+と使わないか。
+
+<条件5 load>
+あるファイルtemp2.lに
+```
+(load "temp.l")
+(funcall function 1)
+```
+を書いて対話型インタプリタ上で(load temp2.l)する(または端末からroseus temp2.lする)か、
+そうしないで対話型インタプリタ上で1行ずつ打ち込むか。
+
+<結果>
+条件1 条件2 条件3 条件4 条件5が真か偽かで二進法で表すと(条件1が16の位)
+0 Segmentation Fault
+1 問題なし
+2 Segmentation Fault
+3 問題なし
+4 問題なし
+5 問題なし
+6 Segmentation Fault
+7 問題なし
+8 問題なし
+9 問題なし
+10 問題なし
+11 問題なし
+12 問題なし
+13 問題なし
+14 問題なし
+15 問題なし
+16 Segmentation Fault
+17 Segmentation Fault
+18 Segmentation Fault
+19 Segmentation Fault
+20 Segmentation Fault
+21 Segmentation Fault
+22 Segmentation Fault
+23 Segmentation Fault
+24 Segmentation Fault
+25 Segmentation Fault
+26 Segmentation Fault 
+27 never rerurn
+28 never rerurn
+29 never rerurn
+30 never rerurn
+31 never rerurn

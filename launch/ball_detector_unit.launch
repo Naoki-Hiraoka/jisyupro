@@ -1,0 +1,64 @@
+<launch>
+  <arg name="color" default="red"/>
+
+  <arg name="pos" default="0"/>
+  
+  <arg name="height0" default="0.015"/>
+  <arg name="height1" default="0.045"/>
+  <arg name="height2" default="0.075"/>
+  <arg name="height3" default="0.105"/>
+  <arg name="height4" default="0.135"/>
+  
+  <node pkg="nodelet" type="nodelet" name="multi_plane_extraction_$(arg color)$(arg pos)_0" respawn="true"
+	args="load jsk_pcl/MultiPlaneExtraction pcl_manager">
+    <remap from="~input" to="hsi_filter_$(arg color)/output"/>
+    <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/>
+    <remap from="~input_polygons" to="board_detector/square$(arg pos)"/>
+    <!-- <remap from="~input_polygons" to="/multi_plane_estimate/output/polygons"/> -->
+    <rosparam subst_value="true">
+      min_height: $(arg height0)
+      max_height: $(arg height1)
+      use_indices: False
+      use_coefficients: False
+    </rosparam>
+  </node>
+  <node pkg="nodelet" type="nodelet" name="multi_plane_extraction_$(arg color)$(arg pos)_1" respawn="true"
+	args="load jsk_pcl/MultiPlaneExtraction pcl_manager">
+    <remap from="~input" to="hsi_filter_$(arg color)/output"/>
+    <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/>
+    <remap from="~input_polygons" to="board_detector/square$(arg pos)"/>
+    <!-- <remap from="~input_polygons" to="/multi_plane_estimate/output/polygons"/> -->
+    <rosparam subst_value="true">
+      min_height: $(arg height1)
+      max_height: $(arg height2)
+      use_indices: False
+      use_coefficients: False
+    </rosparam>
+  </node>
+  <node pkg="nodelet" type="nodelet" name="multi_plane_extraction_$(arg color)$(arg pos)_2" respawn="true"
+	args="load jsk_pcl/MultiPlaneExtraction pcl_manager">
+    <remap from="~input" to="hsi_filter_$(arg color)/output"/>
+    <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/>
+    <remap from="~input_polygons" to="board_detector/square$(arg pos)"/>
+    <!-- <remap from="~input_polygons" to="/multi_plane_estimate/output/polygons"/> -->
+    <rosparam subst_value="true">
+      min_height: $(arg height2)
+      max_height: $(arg height3)
+      use_indices: False
+      use_coefficients: False
+    </rosparam>
+  </node>
+  <node pkg="nodelet" type="nodelet" name="multi_plane_extraction_$(arg color)$(arg pos)_3" respawn="true"
+	args="load jsk_pcl/MultiPlaneExtraction pcl_manager">
+    <remap from="~input" to="hsi_filter_$(arg color)/output"/>
+    <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/>
+    <remap from="~input_polygons" to="board_detector/square$(arg pos)"/>
+    <!-- <remap from="~input_polygons" to="/multi_plane_estimate/output/polygons"/> -->
+    <rosparam subst_value="true">
+      min_height: $(arg height3)
+      max_height: $(arg height4)
+      use_indices: False
+      use_coefficients: False
+    </rosparam>
+  </node>
+</launch>

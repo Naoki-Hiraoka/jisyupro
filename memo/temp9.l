@@ -1,0 +1,5 @@
+(load "./temp9_2.l")
+(defun test (function)
+  (let ((msg 1))
+    (funcall function msg)))
+(test func)

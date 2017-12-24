@@ -1,0 +1,16 @@
+直接の関連があるかは分かりませんが、自分のPCでも同様の現象が起こりました。
+#'関連でSegmentation Faultやnever rerurnが発生します。
+
+どういう場合に発生したのかをまとめました。
+
+発生する必要条件(2つ)
+1.
+```
+(defun func (x) (print x))
+(setq function #'func)
+```
+または、
+```
+(setq function #'(lambda (x) (print x)))
+```
+*
