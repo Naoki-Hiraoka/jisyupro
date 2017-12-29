@@ -16,7 +16,7 @@
 (while (ros::ok)
   (case *state*
     (:wait (state-wait))
-    (:recog-opponet-action (state-recog-opponent-action))
+    (:recog-opponent-action (state-recog-opponent-action))
     (:check-opponent-action (state-check-opponent-action))
     (:opponent-action-error (state-opponent-action-error))
     (:victory-check-opponent (state-victory-check-opponent))

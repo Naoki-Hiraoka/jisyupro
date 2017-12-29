@@ -64,7 +64,7 @@ public:
 int main(int argc,char **argv){
   ros::init(argc,argv,"think");
   MyCvPkg mcp{};
-  ros::Rate loop_rate(30);
+  ros::Rate loop_rate(10);
   while(ros::ok()){
     ros::spinOnce();
     loop_rate.sleep();

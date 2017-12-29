@@ -6,16 +6,35 @@
 (when (require "package://dxl_armed_turtlebot/euslisp/dxl-armed-turtlebot-interface.l")
   (dxl-armed-turtlebot-init))
 
+;;カメラ支持部を作成
+(let ((b1 (make-cube 50.0 10.0 410.0));;zを10大きくして食い込ませる
+      (b2 (make-cube 50.0 10.0 410.0));;zを10大きくして食い込ませる
+      (b3 (make-cube 558.0 50.0 10.0)));;x,yを2大きくして食い込ませる
+  (send b1 :translate (float-vector 19.0 -19 610))
+  (send b2 :translate (float-vector 19.0 19 610))
+  (send b3 :translate (float-vector 272.0 0 815))
+  (send *irtviewer* :draw-objects)
+  (setq *supporter* (body+ b1 b3 b2))
+  (send *supporter* :set-color :gray10)
+  (send *supporter* :put :attach-coords (make-cascoords :pos (float-vector 550 0 810)))
+  (send *supporter* :assoc (send *supporter* :get :attach-coords))
+  (send *dxl-armed-turtlebot* :assoc *supporter*)
+  (objects (list *dxl-armed-turtlebot* *supporter*)) 
+  (send *irtviewer* :draw-objects))
+
 ;;cameraの座標を作成
-(setq *realsense-camera* (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :transform (make-coords :pos #f(133 -33 -93.5) :rpy (float-vector 0 pi/2 pi)))))
-(send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :assoc *realsense-camera*)
+;;始め手先につけようと思ったが、たわんでダメだと知った。
+;;(setq *realsense-camera* (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :transform (make-coords :pos #f(133 -33 -93.5) :rpy (float-vector 0 pi/2 pi)))))
+;;(send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :assoc *realsense-camera*)
+;;(setq *realsense-camera* (make-cascoords :coords (send (send (send *supporter* :get :attach-coords) :copy-worldcoords) :rotate pi :x)))
+(setq *realsense-camera* (make-cascoords :coords (send (send (send *supporter* :get :attach-coords) :copy-worldcoords) :transform (make-coords :pos #F(0 0 -5) :rpy (float-vector 0 0 pi)))))
 
 ;;poleの座標を購読
 (setq *pole-list* nil)
 (dotimes (i 16)
   (push (make-cylinder 5 150) *pole-list*))
 
-(setq *draw-target* (append (list *dxl-armed-turtlebot*) *pole-list*))
+(setq *draw-target* (append (list *dxl-armed-turtlebot* *supporter*) *pole-list*))
 (objects *draw-target*)
 
 (setq *board-detector-time* (ros::time-now))
@@ -87,14 +106,21 @@
 (setq *pre-ball-vector* (make-array 64 :element-type :integer :initial-element 0))
 ;;カメラからボールの状況の更新
 (defun update-ball-state ()
-  (let (goal)
-    (setq goal (instance jisyupro::board_state_recorderActiongoal :init))
-    (send goal :goal :update t)
-    (send *c* :send-goal goal)
-    (send *c* :wait-for-result)
-    (setq *pre-ball-vector* *ball-vector*) 
-    (setq *ball-vector* (send (send *c* :get-result) :board_state :int8s))
-    ))
+  ;; (let (goal)
+  ;;   (setq goal (instance jisyupro::board_state_recorderActiongoal :init))
+  ;;   (send goal :goal :update t)
+  ;;   (send *c* :send-goal goal)
+  ;;   (send *c* :wait-for-result)
+  ;;   (setq *pre-ball-vector* *ball-vector*) 
+  ;;   (setq *ball-vector* (send (send *c* :get-result) :board_state :int8s))
+  ;;   )
+  (setq goal (instance jisyupro::board_state_recorderActiongoal :init))
+  (send goal :goal :update t)
+  (send *c* :send-goal goal)
+  (send *c* :wait-for-result)
+  (setq *pre-ball-vector* *ball-vector*) 
+  (setq *ball-vector* (send (send *c* :get-result) :board_state :int8s))
+  )
 ;;ball-vectorとpre-ball-vectorを比較し、変わった場所を返す。
 ;;不自然ならnilを返す
 (setq *changepos* -1)
@@ -187,17 +213,19 @@
 	  ))
       ))
   (objects (append *draw-target* *ball-list*))
+  t
   )
 
 ;;(ros::subscribe "/board_state_update" std_msgs::bool
 ;;		#'(lambda (msg)
 ;;		    (get-ball-state)))
 
-;;初期姿勢をとる(手を上にあげる)
+;;初期姿勢をとる(カメラが有効に使える姿勢)
 (defun default-pose ()
-  (send *dxl-armed-turtlebot* :reset-pose2)
-  (send *dxl-armed-turtlebot* :inverse-kinematics (make-cascoords :pos #f(300 0 700) :rpy (float-vector 0 -pi/2 0)) :rotation-axis t :rthre (deg2rad 1) :thre 10 :link-list (send *dxl-armed-turtlebot* :link-list (send *dxl-armed-turtlebot* :arm :end-coords :parent)) :revert-if-fail nil)
-  (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000)
+  ;;(send *dxl-armed-turtlebot* :reset-pose2)
+  ;;(send *dxl-armed-turtlebot* :inverse-kinematics (make-cascoords :pos #f(300 0 700) :rpy (float-vector 0 -pi/2 0)) :rotation-axis t :rthre (deg2rad 1) :thre 10 :link-list (send *dxl-armed-turtlebot* :link-list (send *dxl-armed-turtlebot* :arm :end-coords :parent)) :revert-if-fail nil)
+  (send *dxl-armed-turtlebot* :tuckarm-pose2)
+  (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 3000)
   (send *ri* :wait-interpolation)
 )
 
@@ -294,3 +322,71 @@
       (unless (zerop (elt *ball-vector* (+ (* 0 16) (* 3 4) 3)))
 	(return-from victory-check (elt *ball-vector* (+ (* 0 16) (* 3 4) 3)))))
   nil)
+
+;;armが持ったボールの位置を受信する
+;;赤
+(setq *armpos-cb-num-red* -10)
+(setq *armpos-red* nil)
+(setq *armpos-time-red* (ros::time-now))
+(dotimes (i 10)
+  (push nil *armpos-red*))
+(defun armpos-red-cb (msg) ;;過去10コマの平均値をとる ;;lambdaでやると、対話型インタプリタでros::spin-onceした時にnever returnする
+  (when (and (< (send msg :point :x) 0) (> (send msg :point :x) 0)) ;;nan
+    (return-from armpos-red-cb))
+  ;;座標変換
+  (send msg :point (send *realsense-camera* :transform-vector (ros::tf-point->pos (send msg :point)))) 
+  ;;(send msg :point (send *realsense-camera* :transform-vector (ros::tf-point->pos (send msg :point)) :world))
+  (when (< *armpos-cb-num-red* 0) ;;10コマ集まっていないとき
+    (setf (elt *armpos-red* (+ *armpos-cb-num-red* 10)) msg)
+    (incf *armpos-cb-num-red*)
+    (return-from armpos-red-cb))
+  (setf (elt *armpos-red* *armpos-cb-num-red*) msg)
+  (incf *armpos-cb-num-red*)
+  (if (> *armpos-cb-num-red* 9)
+      (setq *armpos-cb-num-red* 0))
+  (setq *armpos-time-red* (send (elt *armpos-red* *armpos-cb-num-red*) :header :stamp));;計算に影響する最も古いtime
+  )
+(ros::subscribe "/centroidpublisher_red/output/point" geometry_msgs::PointStamped #'armpos-red-cb)
+
+;;青
+(setq *armpos-cb-num-blue* -10)
+(setq *armpos-blue* nil)
+(setq *armpos-time-blue* (ros::time-now))
+(dotimes (i 10)
+  (push nil *armpos-blue*))
+(defun armpos-blue-cb (msg) ;;過去10コマの平均値をとる ;;lambdaでやると、対話型インタプリタでros::spin-onceした時にnever returnする
+  (when (and (< (send msg :point :x) 0) (> (send msg :point :x) 0)) ;;nan
+    (return-from armpos-blue-cb))
+  ;;座標変換
+  (send msg :point (send *realsense-camera* :transform-vector (ros::tf-point->pos (send msg :point)))) 
+  (when (< *armpos-cb-num-blue* 0) ;;10コマ集まっていないとき
+    (setf (elt *armpos-blue* (+ *armpos-cb-num-blue* 10)) msg)
+    (incf *armpos-cb-num-blue*)
+    (return-from armpos-blue-cb))
+  (setf (elt *armpos-blue* *armpos-cb-num-blue*) msg)
+  (incf *armpos-cb-num-blue*)
+  (if (> *armpos-cb-num-blue* 9)
+      (setq *armpos-cb-num-blue* 0))
+  (setq *armpos-time-blue* (send (elt *armpos-blue* *armpos-cb-num-blue*) :header :stamp));;計算に影響する最も古いtime
+  )
+(ros::subscribe "/centroidpublisher_blue/output/point" geometry_msgs::PointStamped #'armpos-blue-cb)
+
+(defun get-armpos (color)
+  (let ((targetlist (if (> color 0)
+		       *armpos-red*
+		     *armpos-blue*))
+	(sum #f(0 0 0)))
+  ;;平均をとる
+    (dotimes (j 10)
+      (setf sum (v+ sum (send (elt targetlist j) :point)))
+      )
+    (setf sum (scale 0.1 sum))
+    sum
+    ))
+(defun wait-armpos-time (color)
+  (let ((ref-time (ros::time-now)))
+    (while (ros::time< (if (> color 0) *armpos-time-red* *armpos-time-blue*) ref-time)
+      (ros::spin-once)
+      (x::window-main-one)
+      (ros::sleep))))
+    
