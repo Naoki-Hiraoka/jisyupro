@@ -1,0 +1,131 @@
+#include <iostream>
+//#include <cstdint> //int64_t
+#include <bitset> //bitset
+#include <utility> //pair
+#include <vector> //vector
+#include <memory> //shared_ptr
+#include <list> //list
+
+using namespace std;
+
+/*要求の読み方
+  vector<bitset<64> >
+  [0]自分のコマ
+  [1]誰かのコマ
+  [2]空き
+  1なら真。
+  どこにも書いてなければdon't care
+  don't careの上は必ずdon't careという前提
+  
+  bitsetは、x(0~15)番目のポールのz(0~3)の高さのコマが、
+  [x*4+z]と扱われる
+*/
+class state{
+protected:
+public:
+  state();
+  vector<bitset<64> > now_state;//自分のターン終了時の状態
+  vector<pair<vector<bitset<64> >,bitset<64> > > pre{};//自分のターン開始時の状態の条件と、その時にこの状態になるために自分がとる行動のペアたち
+  vector<pair<bitset<64> ,shared_ptr<state> > > next{};//次に至るのを対戦相手が妨害できる行動(実際に置けるとは限らない)と、次の状態
+  int count=0;//ビンゴまでの手数(最大)
+  bool man=false;//強制配置に有効か
+
+  void genpre();//now_stateからpreを自動生成する
+};
+
+state::state(): now_state(3) {
+}
+
+void state::genpre(){//now_stateからpreを自動生成する
+  pre.clear();
+  //now_stateから自分のコマを一つ取り除けばよい
+  for(int x=0;x<16;x++){
+    for(int z=3;z>-1;z--){
+      if(now_state[1][x*4+z])break;//土台が一番上なら自分のコマは一番上ではない
+      if(now_state[0][x*4+z]){//自分のコマが一番上
+	vector<bitset<64> > temp=now_state;
+	temp[0][x*4+z]=0;//自分のコマを取り除く
+	for(int _z=z;z<4;z++)temp[2][x*4+_z]=true;//そこから上を空にする
+	bitset<64> myact{};
+	myact[x*4+z]=true;
+	pre.emplace_back(move(temp),move(myact));
+	break;
+      }
+    }
+  }
+}
+
+list<shared_ptr<state> > make_child(shared_ptr<state> parent){//一手前のstateを作る
+  list<shared_ptr<state> > result{};
+  for(auto& pre:parent->pre){
+    //parentのpreをコピーすれば良い
+    shared_ptr<state> temp{new state};
+    temp->now_state=pre.first;
+    temp->genpre();
+    bitset<64> interfere{};
+    for(int x=0;x<16;x++){//空(次に自分が置きたい場所を含む)を埋められると困る
+      for(int z=0;z<4;z++){
+	if(temp->now_state[2][x*4+z]){
+	  interfere[x*4+z]=1;
+	  break;
+	}
+	if(temp->now_state[0][x*4+z]||temp->now_state[1][x*4+z])continue;
+	break;
+      }
+    }
+    temp->next.emplace_back(move(interfere),parent);
+    temp->count=parent->count+1;
+    temp->man=0;
+    result.push_back(move(temp));
+    //parentのpreから土台を一つ取り除けば良い
+    for(int x=0;x<16;x++){
+      for(int z=3;z>-1;z--){
+	if(pre.first[0][x*4+z])break;
+	if(pre.first[1][x*4+z]){
+	  shared_ptr<state> temp{new state};
+	  temp->now_state = pre.first;
+	  temp->now_state[1][x*4+z]=0;
+	  temp->now_state[2][x*4+z]=1;
+	  temp->genpre();
+	  bitset<64> interfere{};
+	  //取り除いた土台の場所に置いてもらわないとこまる
+	  interfere.set();
+	  interfere[x+4+z]=0;
+	  temp->next.emplace_back(move(interfere),parent);
+	  temp->count=parent->count+1;
+	  if(parent->man&&(z<3)&&(pre.second[x*4+z+1]))temp->man=1;
+	  result.push_back(move(temp));
+	  break;
+	}
+      }
+    }
+  }
+  return result;
+}
+
+list<shared_ptr<state> > make_bingo(){//78個のビンゴ状態を作る
+  list<shared_ptr<state> > result{};
+
+  shared_ptr<state> temp{};
+  int _y=0;
+  int _z=0;
+  for(int _x=0;_x<4;_x++)temp->now_state[1][_y*16+_x*4+_z]=1;
+  _z=1;
+  for(int _x=0;_x<4;_x++)temp->now_state[1][_y*16+_x*4+_z]=1;
+  _z=2;
+  for(int _x=0;_x<4;_x++)temp->now_state[0][_y*16+_x*4+_z]=1;
+  temp->genpre();
+  temp->count=0;
+  temp->man=true;
+
+  result.push_back(move(temp));
+  return result;
+}
+
+int main(void){
+  auto temp{make_bingo()};
+  for(auto& tt:temp){
+    cout<<tt->now_state<<endl;
+  }
+  return 0;
+}
