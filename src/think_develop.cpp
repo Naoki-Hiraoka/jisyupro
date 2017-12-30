@@ -5,6 +5,7 @@
 #include <vector> //vector
 #include <memory> //shared_ptr
 #include <list> //list
+#include <functional>
 
 using namespace std;
 
@@ -21,7 +22,7 @@ using namespace std;
   [x*4+z]と扱われる
 */
 
-ostream& operator<<(ostream& s,const vector<bitset<64> > state){
+ostream& operator<<(ostream& s,const vector<bitset<64> >& state){
   if(state.size()==3){//要求
     for(int y=0;y<4;y++){
       for(int z=0;z<4;z++){
@@ -53,7 +54,7 @@ ostream& operator<<(ostream& s,const vector<bitset<64> > state){
   }
 }
 
-ostream& operator<<(ostream& s,const pair<vector<bitset<64> >,bitset<64> > pre){
+ostream& operator<<(ostream& s,const pair<vector<bitset<64> >,bitset<64> >& pre){
   for(int y=0;y<4;y++){
     for(int z=0;z<4;z++){
       for(int x=0;x<4;x++){
@@ -88,13 +89,13 @@ public:
   int count=0;//ビンゴまでの手数(最大)
   //bool man=false;//強制配置に有効か
 
-  void genpre(bool);//now_stateからpreを自動生成する
+  void genpre(bool) noexcept;//now_stateからpreを自動生成する
 };
 
 state::state(): now_state(3) {
 }
 
-void state::genpre(bool same=false){//now_stateからpreを自動生成する
+void state::genpre(bool same=false) noexcept{//now_stateからpreを自動生成する
   pre.clear();
   //now_stateから上からコマを一つ取り除けばよい
   for(int x=0;x<16;x++){
@@ -120,7 +121,7 @@ void state::genpre(bool same=false){//now_stateからpreを自動生成する
   }
 }
 
-list<shared_ptr<state> > make_child(shared_ptr<state> parent){//parentのpreから一手前のstateを作る
+list<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{//parentのpreから一手前のstateを作る
   //前回のターンにどういう盤面で相手にターンを渡すかということ
   list<shared_ptr<state> > result{};
   for(auto& pre:parent->pre){
@@ -179,7 +180,7 @@ list<shared_ptr<state> > make_child(shared_ptr<state> parent){//parentのpreか�
   return result;
 }
 
-shared_ptr<state> merge(shared_ptr<state> state1,shared_ptr<state> state2){//２つのx1stateがダブルリーチ可能ならmerge、そうでないならnullptr
+shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<state>& state2) noexcept{//２つのx1stateがダブルリーチ可能ならmerge、そうでないならnullptr
   //要求を同時に満たすことが可能で、その時の自分の行動を共有し、相手が止める行動が重複しなければよい
   //x1は、nextは1つずつしかない(前提)
   shared_ptr<state> result=nullptr;
@@ -203,12 +204,17 @@ shared_ptr<state> merge(shared_ptr<state> state1,shared_ptr<state> state2){//２
 	  temp[0]=pre1.first[0]|pre2.first[0];
 	  temp[1]=(pre1.first[1]&(~pre2.first[0]))|(pre2.first[1]&(~pre1.first[0]));
 	  temp[2]=pre1.first[2]|pre2.first[2];
-	  result->pre.emplace_back(temp,(pre1.second|pre2.second));
+	  result->pre.emplace_back(temp,(pre1.second&pre2.second));
 	}
       }
     }
   }
   return result;
+}
+
+bool ballnump(int myball_max,int anyball_max,const shared_ptr<state>& state) noexcept{
+  if((state->now_state[0].count()>myball_max)||(state->now_state[0].count()+state->now_state[1].count()>anyball_max))return true;
+  return false;
 }
 
 list<shared_ptr<state> > make_bingo(){//76個のビンゴ状態を作る
@@ -236,27 +242,144 @@ list<shared_ptr<state> > make_bingo(){//76個のビンゴ状態を作る
     }
   }
   //前後16
-
+  for(int x=0;x<4;x++){
+    for(int z=0;z<4;z++){
+      shared_ptr<state> temp{new state};
+      for(int _y=0;_y<4;_y++)temp->now_state[0][_y*16+x*4+z]=1;
+      for(int _z=0;_z<z;_z++){
+	for(int _y=0;_y<4;_y++)temp->now_state[1][_y*16+x*4+_z]=1;
+      }
+      temp->genpre();
+      temp->count=0;
+      result.push_back(move(temp));
+    }
+  }
+  
   //xy8
+  for(int z=0;z<4;z++){
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][i*16+i*4+z]=1;
+    for(int _z=0;_z<z;_z++){
+      for(int i=0;i<4;i++)temp->now_state[1][i*16+i*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  for(int z=0;z<4;z++){
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][(3-i)*16+i*4+z]=1;
+    for(int _z=0;_z<z;_z++){
+      for(int i=0;i<4;i++)temp->now_state[1][(3-i)*16+i*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  
   //yz8
+  for(int x=0;x<4;x++){
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][i*16+x*4+i]=1;
+    for(int _y=0;_y<4;_y++){
+      for(int _z=0;_z<_y;_z++)temp->now_state[1][_y*16+x*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  for(int x=0;x<4;x++){
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][i*16+x*4+(3-i)]=1;
+    for(int _y=0;_y<4;_y++){
+      for(int _z=0;_z<(3-_y);_z++)temp->now_state[1][_y*16+x*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  
   //zx8
+  for(int y=0;y<4;y++){
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][y*16+i*4+i]=1;
+    for(int _x=0;_x<4;_x++){
+      for(int _z=0;_z<_x;_z++)temp->now_state[1][y*16+_x*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  for(int y=0;y<4;y++){
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][y*16+i*4+(3-i)]=1;
+    for(int _x=0;_x<4;_x++){
+      for(int _z=0;_z<(3-_x);_z++)temp->now_state[1][y*16+_x*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
   //斜め4
+  {
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][i*16+i*4+i]=1;
+    for(int i=0;i<4;i++){
+      for(int _z=0;_z<i;_z++)temp->now_state[1][i*16+i*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  {
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][i*16+i*4+(3-i)]=1;
+    for(int i=0;i<4;i++){
+      for(int _z=0;_z<(3-i);_z++)temp->now_state[1][i*16+i*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  {
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][i*16+(3-i)*4+i]=1;
+    for(int i=0;i<4;i++){
+      for(int _z=0;_z<i;_z++)temp->now_state[1][i*16+(3-i)*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
+  {
+    shared_ptr<state> temp{new state};
+    for(int i=0;i<4;i++)temp->now_state[0][i*16+(3-i)*4+(3-i)]=1;
+    for(int i=0;i<4;i++){
+      for(int _z=0;_z<(3-i);_z++)temp->now_state[1][i*16+(3-i)*4+_z]=1;
+    }
+    temp->genpre();
+    temp->count=0;
+    result.push_back(move(temp));
+  }
   
   return result;
 }
 
 int main(void){
-  list<shared_ptr<state> > new_x2{make_bingo()};
-  list<shared_ptr<state> > x2{};
+  list<shared_ptr<state> > x2{};//処理後のnew_x2をどんどんためていく
+  list<shared_ptr<state> > new_x2{make_bingo()};//new_new_x2からこっちに移して処理する対象とする
+  list<shared_ptr<state> > new_new_x2{};//x1からmergeし作られたものを一時的に入れる
+  list<shared_ptr<state> > x1{};//new_x2から作られたものをどんどんためていく
   /*
-  for(auto&tt :temp){
-    cout<<tt->now_state<<endl;
-    for(auto& pre:tt->pre){
+  for(auto& bingo :new_x2){
+    cout<<bingo->now_state<<endl;
+    for(auto& pre:bingo->pre){
       cout<<pre<<endl;
     }
     cout<<endl;
-    }*/
-
+  }
+  */
+  
   /*
   for(auto& bingo:temp){
     cout<<"bingo"<<endl;
@@ -271,27 +394,57 @@ int main(void){
     cout<<endl;
   }
   */
-  list<shared_ptr<state> > x1{};
-  list<shared_ptr<state> > new_new_x2{};
+  int loopnum_max=7;
+  
+  auto func=bind(ballnump,loopnum_max+1,loopnum_max*2+1,std::placeholders::_1);
+  new_x2.remove_if(func);//読む手の数を超えている
+  cout<<new_x2.size()<<" "<<x1.size()<<endl;
 
-  //ループ１回
-  for(auto& bingo:new_x2){
-    auto children=make_child(bingo);
-    for(auto& child:children){
-      //x1のリスト内から、統合できるものを探す
-      for(auto& target:x1){
-	shared_ptr<state> result=merge(child,target);
-	if(result!=nullptr)new_new_x2.push_back(result);
+  
+  for(int loopnum=0;loopnum<loopnum_max;loopnum++){
+    //ループ
+    auto func=bind(ballnump,loopnum_max-loopnum,loopnum_max*2-loopnum*2-1,std::placeholders::_1);//読む手の数
+    x1.remove_if(func);
+    //x2.remove_if(func);
+    
+    for(auto& targetx2:new_x2){
+      auto children=make_child(targetx2);
+      for(auto& child:children){
+	if(func(child))continue;//読む手の数を超えている
+	//x1のリスト内から、統合できるものを探す
+	for(auto& target:x1){
+	  shared_ptr<state> result=merge(child,target);
+	  if(result==nullptr) continue;
+	  
+	  if(func(result))continue;//読む手の数を超えている
+
+	  /*
+	  if(loopnum==3&&result!=nullptr){
+	    cout<<result->now_state<<endl;
+	    for(auto& pre:result->pre)cout<<pre<<endl;
+	  }
+	  */
+	  
+	  new_new_x2.push_back(move(result));
+	}
+	x1.push_back(move(child));
       }
-      x1.push_back(move(child));
-    }
-  }
-  x2.splice(x2.end(),new_x2);
-  new_x2.splice(new_x2.end(),new_new_x2);
 
+    }
+    x2.splice(x2.end(),new_x2);
+    new_x2.splice(new_x2.end(),new_new_x2);
+
+    cout<<new_x2.size()<<" "<<x1.size()<<endl;
+  }
+
+  /*
   for(auto& dou:new_x2){
     cout<<dou->now_state<<endl;
+    for(auto& pre:dou->pre){
+      cout<<pre<<endl;
+    }
+    cout<<endl;
   }
-  
+  */
   return 0;
 }
