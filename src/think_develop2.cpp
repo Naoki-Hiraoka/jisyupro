@@ -224,7 +224,8 @@ shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<state>&
 	result->now_state[2]=state1->now_state[2]|state2->now_state[2];
 	result->next.push_back(state1->next[0]);
 	result->next.push_back(state2->next[0]);
-	result->count=max(state1->count,state2->count)+1;
+	//result->count=max(state1->count,state2->count)+1;
+	result->count=max(state1->count,state2->count);
       }
       vector<bitset<64> > temp(3);//pre
       temp[0]=pre1.first[0]|pre2.first[0];
@@ -382,7 +383,7 @@ void unique(vector<shared_ptr<state> >& x2)noexcept{//vectorからnow_stateが�
 	if(!same) (*_state2)->next.push_back(move(next1));
       }
       (*_state2)->count=min((*_state)->count,(*_state2)->count);
-    (*_state)=nullptr;
+      (*_state)=nullptr;
     }
     //同じでなければ、resultへ
     else result.push_back(move(*_state));
@@ -726,7 +727,8 @@ bitset<64> think(const vector<bitset<64> >& board){
 	}
       }
     }
-  }//注盤が埋まっている時の処理がない
+  }
+  //注 盤が埋まっている時の処理がない
 
   //選択肢の中から一つに絞る
   Rand_int rand(0,63);
