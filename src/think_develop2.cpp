@@ -7,6 +7,7 @@
 #include <list> //list
 #include <functional>//bind
 #include <algorithm>
+#include<random>
 
 using namespace std;
 
@@ -22,6 +23,15 @@ using namespace std;
   bitsetは、x(0~15)番目のポールのz(0~3)の高さのコマが、
   [x*4+z]と扱われる
 */
+
+class Rand_int{
+public:
+  Rand_int (int low,int high,int seed=0): r(bind(std::uniform_int_distribution<>(low,high),std::default_random_engine(seed))) {}
+  int operator() (){return r();}
+private:
+  std::function<int()> r;
+};
+
 
 ostream& operator<<(ostream& s,const vector<bitset<64> >& state){
   if(state.size()==3){//要求
@@ -79,6 +89,20 @@ ostream& operator<<(ostream& s,const pair<vector<bitset<64> >,bitset<64> >& pre)
   return s;
 }
 
+ostream& operator<<(ostream& s,const bitset<64>& st){
+  //相手が妨害のためとる行動
+  for(int y=0;y<4;y++){
+    for(int z=0;z<4;z++){
+      for(int x=0;x<4;x++){
+	if(st[y*16+x*4+z])s<<"X";//相手がとるべきがとる行動
+	else s<<"-";//don't care
+      }
+      s<<" ";
+    }
+    s<<endl;
+  }
+  return s;
+}
 
 class state{
 protected:
@@ -245,35 +269,76 @@ bool ballnump(int myball_max,int anyball_max,const shared_ptr<state>& state) noe
   return false;
 }
 
-bool statep(const vector<bitset<64> >& real,int restturn,shared_ptr<state>& state) noexcept{
+bool statep(const vector<bitset<64> >& real,int restturn,bool me,shared_ptr<state>& state) noexcept{
   //realstateは自分のターンが回ってきた時の状態
   //restturn後に、自分のアクションによってstateに到れるかを見ている。
   //preの条件を満たすかで判断
-  for(auto& pre:state->pre){
-    if((pre.first[0].count()>(real[0]&pre.first[0]).count()+restturn)||(pre.first[0].count()+pre.first[1].count()>((real[0]|real[1])&(pre.first[0]|pre.first[1])).count()+restturn*2)//ボールの個数に関する条件
-       ||(pre.first[0]&real[1]).any()||(pre.first[2]&(real[0]|real[1])).any())continue;
-    else return false;
-  }
-  return true;
-}
-
-void remove_if(const vector<bitset<64> >& real,int restturn,vector<shared_ptr<state> >& states){
-  vector<shared_ptr<state> >result{};
-  for(auto& state:states){
-    vector<pair<vector<bitset<64> >,bitset<64> > > newpre{};
+  if(me){
     for(auto& pre:state->pre){
       if((pre.first[0].count()>(real[0]&pre.first[0]).count()+restturn)||(pre.first[0].count()+pre.first[1].count()>((real[0]|real[1])&(pre.first[0]|pre.first[1])).count()+restturn*2)//ボールの個数に関する条件
 	 ||(pre.first[0]&real[1]).any()||(pre.first[2]&(real[0]|real[1])).any())continue;
-      else newpre.push_back(move(pre));
+      else return false;
     }
-    if(!newpre.empty()){
-      state->pre=move(newpre);
-      result.push_back(move(state));
+    return true;
+  }else{//対戦相手の場合、any_ballが1つ増えてもよい
+    for(auto& pre:state->pre){
+      if((pre.first[0].count()>(real[0]&pre.first[0]).count()+restturn)||(pre.first[0].count()+pre.first[1].count()>((real[0]|real[1])&(pre.first[0]|pre.first[1])).count()+restturn*2+1)//ボールの個数に関する条件
+	 ||(pre.first[0]&real[1]).any()||(pre.first[2]&(real[0]|real[1])).any())continue;
+      else return false;
+    }
+    return true;
+  }
+}
+
+void remove_if(const vector<bitset<64> >& real,int restturn,bool me,vector<shared_ptr<state> >& states){
+  vector<shared_ptr<state> >result{};
+  if(me){
+    for(auto& state:states){
+      vector<pair<vector<bitset<64> >,bitset<64> > > newpre{};
+      for(auto& pre:state->pre){
+	if((pre.first[0].count()>(real[0]&pre.first[0]).count()+restturn)||(pre.first[0].count()+pre.first[1].count()>((real[0]|real[1])&(pre.first[0]|pre.first[1])).count()+restturn*2)//ボールの個数に関する条件
+	   ||(pre.first[0]&real[1]).any()||(pre.first[2]&(real[0]|real[1])).any())continue;
+	else newpre.push_back(move(pre));
+      }
+      if(!newpre.empty()){
+	state->pre=move(newpre);
+	result.push_back(move(state));
+      }
+    }
+  }else{
+    for(auto& state:states){
+      vector<pair<vector<bitset<64> >,bitset<64> > > newpre{};
+      for(auto& pre:state->pre){
+	if((pre.first[0].count()>(real[0]&pre.first[0]).count()+restturn)||(pre.first[0].count()+pre.first[1].count()>((real[0]|real[1])&(pre.first[0]|pre.first[1])).count()+restturn*2+1)//ボールの個数に関する条件//anyballが一つ多い
+	   ||(pre.first[0]&real[1]).any()||(pre.first[2]&(real[0]|real[1])).any())continue;
+	else newpre.push_back(move(pre));
+      }
+      if(!newpre.empty()){
+	state->pre=move(newpre);
+	result.push_back(move(state));
+      }
     }
   }
   states=move(result);
   return;
 }
+
+bool statep2(const vector<bitset<64> >& real,shared_ptr<state>& state) noexcept{
+  //realstateは自分のターンが回ってきた時の状態
+  //現在の盤面がnow_stateを満たすかを考える
+  if(((~real[0])&state->now_state[0]).any()||((~real[0])&(~real[1])&(state->now_state[1])).any()||((real[0]|real[1])&(state->now_state[2])).any()) return true;
+  return false;
+}
+void remove_if2(const vector<bitset<64> >& real,vector<shared_ptr<state> >& states){
+  vector<shared_ptr<state> >result{};
+  for(auto& state:states){
+    if(((~real[0])&state->now_state[0]).any()||((~real[0])&(~real[1])&(state->now_state[1])).any()||((real[0]|real[1])&(state->now_state[2])).any()) continue;
+    result.push_back(move(state));
+  }
+  states=move(result);
+  return;
+}
+
 
 bool state_sort_func(const shared_ptr<state> state1,const shared_ptr<state> state2)noexcept{
   //now_stateによってソート
@@ -476,17 +541,15 @@ vector<shared_ptr<state> > make_bingo(){//76個のビンゴ状態を作る
   return result;
 }
 
-vector<bitset<64> > make_opponent_board(const vector<bitset<64> >& board) noexept{
+vector<bitset<64> > make_opponent_board(const vector<bitset<64> >& board) noexcept{
   vector<bitset<64> > result=board;
   swap(result[0],result[1]);
   return result;
 }
 
-int main(void){
-  vector<bitset<64> > start(2);
-  start[0][1]=1;start[0][5]=1;start[0][9]=1;
-  start[1][0]=1;start[1][4]=1;start[1][8]=1;
-  int loopnum_max=1;
+bitset<64> think(const vector<bitset<64> >& board){
+  vector<bitset<64> > mystart=board;
+  int loopnum_max=6;
   
   vector<shared_ptr<state> > myx2{};//処理後のnew_x2をどんどんためていく
   vector<shared_ptr<state> > mynew_x2{make_bingo()};//new_new_x2からこっちに移して処理する対象とする
@@ -494,14 +557,14 @@ int main(void){
   vector<shared_ptr<state> > myx1{};//new_x2から作られたものをどんどんためていく
  
   //auto func=bind(statep,start,loopnum_max,std::placeholders::_1);
-  remove_if(start,loopnum_max,mynew_x2);//読む手の数を超えているもの、現在の盤面から至れないものを削除
+  remove_if(mystart,loopnum_max,true,mynew_x2);//読む手の数を超えているもの、現在の盤面から至れないものを削除
   
   cout<<mynew_x2.size()<<" "<<myx1.size()<<endl;
   
   for(int loopnum=loopnum_max-1;loopnum>=0;loopnum--){//loopnum=この手に至るまでのターン数。0なら今回
     //ループ
-    auto func=bind(statep,start,loopnum,std::placeholders::_1);//読む手の数を超えているか、現在の盤面から至れないか
-    remove_if(start,loopnum,myx1);
+    auto func=bind(statep,mystart,loopnum,true,std::placeholders::_1);//読む手の数を超えているか、現在の盤面から至れないか
+    remove_if(mystart,loopnum,true,myx1);
     //x2.remove_if(func);
 
     for(auto& targetx2:mynew_x2){
@@ -509,7 +572,7 @@ int main(void){
       for(auto& child:children){
 	if(func(child))continue;//読む手の数を超えている,現在の盤から至れない
 	//x1のリスト内から、統合できるものを探す。ダブルリーチを製造。<-ここで時間がかかる
-	for(auto& target:x1){
+	for(auto& target:myx1){
 	  shared_ptr<state> result=merge(child,target);
 	  if(result==nullptr) continue;//統合できない	  
 	  if(func(result))continue;//読む手の数を超えている,現在の盤から至れない
@@ -522,28 +585,213 @@ int main(void){
     myx2.insert(myx2.end(),mynew_x2.begin(),mynew_x2.end());
     unique(mynew_new_x2);
     mynew_x2=move(mynew_new_x2);
-    remove_if(start,loopnum,myx2);
+    remove_if(mystart,loopnum,true,myx2);
     unique(myx2);
     cout<<myx2.size()<<" "<<mynew_x2.size()<<" "<<myx1.size()<<endl;
 
+    /*
     if(loopnum<=2){
-      for(auto& result:x2){
-	//if(result->count>1){
-	  cout<<result->now_state<<endl;
+      for(auto& result:myx2){
+       if(result->count>1){
+       cout<<result->now_state<<endl;
 	  for(auto& pre:result->pre)cout<<pre<<endl;
-	  //}
+	  }
       }
-    }    
+    }
+    */    
+  }
+  myx2.insert(myx2.end(),mynew_x2.begin(),mynew_x2.end());
+  unique(myx2);
+  
+  //対戦相手バージョン
+  vector<bitset<64> > opstart=make_opponent_board(mystart);
+  vector<shared_ptr<state> > opx2{};//処理後のnew_x2をどんどんためていく
+  vector<shared_ptr<state> > opnew_x2{make_bingo()};//new_new_x2からこっちに移して処理する対象とする
+  vector<shared_ptr<state> > opnew_new_x2{};//x1からmergeし作られたものを一時的に入れる
+  vector<shared_ptr<state> > opx1{};//new_x2から作られたものをどんどんためていく
+ 
+  //auto func=bind(statep,start,loopnum_max,std::placeholders::_1);
+  remove_if(opstart,loopnum_max-1,false,opnew_x2);//読む手の数を超えているもの、現在の盤面から至れないものを削除。読む手は1つ少なくて良い
+  
+  cout<<opnew_x2.size()<<" "<<opx1.size()<<endl;
+  
+  for(int loopnum=loopnum_max-2;loopnum>=0;loopnum--){//loopnum=この手に至るまでのターン数。0なら今回。読む手は1つ少なくて良い
+    //ループ
+    auto func=bind(statep,opstart,loopnum,false,std::placeholders::_1);//読む手の数を超えているか、現在の盤面から至れないか
+    remove_if(opstart,loopnum,false,opx1);
+    //x2.remove_if(func);
+    
+    for(auto& targetx2:opnew_x2){
+      auto children=make_child(targetx2);//targetx2に至るためひとつ前の状態を作る
+      for(auto& child:children){
+	if(func(child))continue;//読む手の数を超えている,現在の盤から至れない
+	//x1のリスト内から、統合できるものを探す。ダブルリーチを製造。<-ここで時間がかかる
+	for(auto& target:opx1){
+	  shared_ptr<state> result=merge(child,target);
+	  if(result==nullptr) continue;//統合できない	  
+	  if(func(result))continue;//読む手の数を超えている,現在の盤から至れない
+	  opnew_new_x2.push_back(move(result));
+	}
+	opx1.push_back(move(child));
+      }
+    }
+    
+    opx2.insert(opx2.end(),opnew_x2.begin(),opnew_x2.end());
+    unique(opnew_new_x2);
+    opnew_x2=move(opnew_new_x2);
+    remove_if(opstart,loopnum,false,opx2);
+    unique(opx2);
+    cout<<opx2.size()<<" "<<opnew_x2.size()<<" "<<opx1.size()<<endl;
+    
+    /*
+      if(loopnum<=2){
+      for(auto& result:opx2){
+      if(result->count>1){
+      cout<<result->now_state<<endl;
+      for(auto& pre:result->pre)cout<<pre<<endl;
+      }
+      }
+      } 
+    */   
+  }
+  //最後に、opx2に至るx1を現在の盤面仕様にする。つまり、x1のnow_stateが現在の盤面と同じかどうか
+  opx2.insert(opx2.end(),opnew_x2.begin(),opnew_x2.end());
+  unique(opx2);
+  opx1.clear();
+  auto func2=bind(statep2,opstart,std::placeholders::_1);//now_stateが現在の盤面と一致するか
+  for(auto& targetx2:opx2){
+    auto children=make_child(targetx2);//targetx2に至るためひとつ前の状態を作る
+    for(auto& child:children){
+      if(func2(child))continue;////now_stateが現在の盤面と一致するか
+      opx1.push_back(move(child));
+    }
   }
 
-  /*
-  for(auto& dou:new_x2){
-    cout<<dou->now_state<<endl;
-    for(auto& pre:dou->pre){
+  
+  for(auto& st:myx2){
+    cout<<st->count<<endl;
+    cout<<st->now_state<<endl;
+    for(auto& pre:st->pre){
       cout<<pre<<endl;
     }
     cout<<endl;
   }
-  */
-  return 0;
+  cout<<"vs"<<endl;
+  for(auto& st:opx1){
+    cout<<st->count<<endl;
+    cout<<st->now_state<<endl;
+    for(auto& next:st->next){
+      cout<<next.first<<endl;
+    }
+    cout<<endl;
+  }
+
+  bitset<64> myaction{};
+  if(!myx2.empty()){//勝てるかも
+    for(auto& x2:myx2){
+      for(auto& pre:x2->pre){
+	bitset<64> tempmyaction=pre.second;
+	//対戦相手の、countが自分のcount以下のx1の妨害もする必要
+	for(auto& x1:opx1){
+	  if(x1->count<=x2->count) tempmyaction&=x1->next[0].first;
+	}
+	myaction|=tempmyaction;
+      }
+    }
+  }
+
+  if(!myaction.any()){//すぐには勝てない
+    //置ける場所
+    for(int x=0;x<16;x++){
+      for(int z=0;z<4;z++){
+	if(board[0][x*4+z]||board[1][x*4+z])continue;
+	else{
+	  myaction[x*4+z]=1;
+	  break;
+	}
+      }
+    }
+    //対戦相手の妨害優先
+    for(auto& x1:opx1){
+      myaction&=x1->next[0].first;
+    }
+  }
+  if(!myaction.any()){ //多分負け。置ける場所からランダムに
+    for(int x=0;x<16;x++){
+      for(int z=0;z<4;z++){
+	if(board[0][x*4+z]||board[1][x*4+z])continue;
+	else{
+	  myaction[x*4+z]=1;
+	  break;
+	}
+      }
+    }
+  }//注盤が埋まっている時の処理がない
+
+  //選択肢の中から一つに絞る
+  Rand_int rand(0,63);
+  while(true){
+    int num=rand();
+    if(myaction[num]){
+      myaction.reset();
+      myaction[num]=1;
+      break;
+    }
+  }
+
+  return myaction;
+}
+
+bool victory(vector<bitset<64> >& board) noexcept{
+  static const auto bingos=make_bingo();
+  for(const auto& bingo:bingos){
+    if((board[0]&bingo->now_state[0]).count()==4)return true;
+    if((board[1]&bingo->now_state[0]).count()==4)return true;
+  }
+  return false;
+}
+
+int main(int argc ,char** argv){
+  vector<bitset<64> > board(2);
+  //board[0][1]=1;board[0][5]=1;board[0][9]=1;board[0][2]=1;board[0][6]=1;board[0][10]=1;
+  //board[1][0]=1;board[1][4]=1;board[1][8]=1;
+  while(true){
+    auto action=think(board);
+    cout<<action<<endl;
+    board[0]|=action;
+    cout<<board<<endl;
+    if(victory(board)){
+      cout<<"CPU win"<<endl;
+      return 0;
+    }
+    
+    while(true){
+      int youraction;
+      cout<<"0~63"<<endl;
+      cin>>youraction;
+      if(0>youraction||youraction>63){
+	continue;
+      }
+      bitset<64> _youraction{};
+      _youraction[youraction]=1;
+      bitset<64> canplace{};
+      for(int x=0;x<16;x++){
+	for(int z=0;z<4;z++){
+	  if(board[0][x*4+z]||board[1][x*4+z])continue;
+	  else{
+	    canplace[x*4+z]=1;
+	    break;
+	  }
+	}
+      }
+      if(!(_youraction&canplace).any())continue;
+      board[1]|=_youraction;
+      cout<<board<<endl;
+      if(victory(board)){
+	cout<<"YOU win"<<endl;
+	return 0;
+      }
+      break;
+    }
+  }
 }
