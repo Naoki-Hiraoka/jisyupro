@@ -122,9 +122,9 @@ void state::genpre(bool same=false) noexcept{//now_stateからpreを自動生成
   }
 }
 
-list<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{//parentのpreから一手前のstateを作る
+vector<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{//parentのpreから一手前のstateを作る
   //前回のターンにどういう盤面で相手にターンを渡すかということ
-  list<shared_ptr<state> > result{};
+  vector<shared_ptr<state> > result{};
   for(auto& pre:parent->pre){
     //parentのpreそのまま。相手が明後日の場所に置く
     shared_ptr<state> temp{new state};
@@ -143,23 +143,26 @@ list<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{//
     temp->next.emplace_back(move(interfere),parent);
     temp->count=parent->count+1;
     result.push_back(move(temp));
-    
+
     //parentのpreから土台を一つ取り除く。相手にそこに置いてもらう。
     for(int x=0;x<16;x++){
       for(int z=3;z>-1;z--){
 	if(pre.first[0][x*4+z])break;
 	if(pre.first[1][x*4+z]){
+
 	  shared_ptr<state> temp{new state};
 	  temp->now_state = pre.first;
 	  temp->now_state[1][x*4+z]=0;
 	  temp->now_state[2][x*4+z]=1;//前提条件より、上は全てemptyのはずなので処理しない
 	  temp->genpre(true);
+
 	  bitset<64> interfere{};
 	  //取り除いた土台の場所以外の場所に置くと妨害できる
 	  //don't careの場所、または、取り除いた土台以外の場所の一番下のempty
 	  interfere.set();
 	  for(auto& req:pre.first) interfere&=~req;//don't careを抽出
 	  //一番下のemptyを抽出
+
 	  for(int _x=0;_x<16;_x++){
 	    for(int _z=0;_z<4;_z++){
 	      if(_x==x)break;//取り除いた土台の場所以外
@@ -184,6 +187,29 @@ list<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{//
 shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<state>& state2) noexcept{//２つのx1stateがダブルリーチ可能ならmerge、そうでないならnullptr
   //要求を同時に満たすことが可能で、その時の自分の行動を共有し、相手が止める行動が重複しなければよい
   //x1は、nextは1つずつしかない(前提)
+  if((state1->next[0].first&state2->next[0].first).any())return nullptr;//相手が止める行動が重複
+  shared_ptr<state> result=nullptr;
+  for(auto& pre1: state1->pre){
+    for(auto& pre2: state2->pre){
+      if((pre1.second&pre2.second).none())continue;//自分の行動を共有しない
+      if((((pre1.first[0]|pre1.first[1])&pre2.first[2])|((pre2.first[0]|pre2.first[1])&pre1.first[2])).any())continue;//要求を同時に満たせない
+      if(result==nullptr){
+	result=make_shared<state>();
+	result->now_state[0]=state1->now_state[0]|state2->now_state[0];
+	result->now_state[1]=(state1->now_state[1]&(~state2->now_state[0]))|(state2->now_state[1]&(~state1->now_state[0]));
+	result->now_state[2]=state1->now_state[2]|state2->now_state[2];
+	result->next.push_back(state1->next[0]);
+	result->next.push_back(state2->next[0]);
+	result->count=max(state1->count,state2->count)+1;
+      }
+      vector<bitset<64> > temp(3);//pre
+      temp[0]=pre1.first[0]|pre2.first[0];
+      temp[1]=(pre1.first[1]&(~pre2.first[0]))|(pre2.first[1]&(~pre1.first[0]));
+      temp[2]=pre1.first[2]|pre2.first[2];
+      result->pre.emplace_back(temp,(pre1.second&pre2.second));
+    }
+  }
+  /*
   shared_ptr<state> result=nullptr;
   for(auto& next1:state1->next){
     for(auto& next2: state2->next){
@@ -210,6 +236,7 @@ shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<state>&
       }
     }
   }
+  */
   return result;
 }
 
@@ -230,14 +257,23 @@ bool statep(const vector<bitset<64> >& real,int restturn,shared_ptr<state>& stat
   return true;
 }
 
-bool old_statep(const vector<bitset<64> >& real,int restturn,const shared_ptr<state>& state) noexcept{
-  //realstateは自分のターンが回ってきた時の状態
-  //restturn後に、自分のアクションによってstateに到れるかを見ている。
-  if((state->now_state[0].count()>(real[0]&state->now_state[0]).count()+restturn+1)||(state->now_state[0].count()+state->now_state[1].count()>((real[0]|real[1])&(state->now_state[0]|state->now_state[1])).count()+restturn*2+1)//ボールの個数に関する条件
-     ||(state->now_state[0]&real[1]).any()||(state->now_state[2]&(real[0]|real[1])).any())return true;
-  return false;
+void remove_if(const vector<bitset<64> >& real,int restturn,vector<shared_ptr<state> >& states){
+  vector<shared_ptr<state> >result{};
+  for(auto& state:states){
+    vector<pair<vector<bitset<64> >,bitset<64> > > newpre{};
+    for(auto& pre:state->pre){
+      if((pre.first[0].count()>(real[0]&pre.first[0]).count()+restturn)||(pre.first[0].count()+pre.first[1].count()>((real[0]|real[1])&(pre.first[0]|pre.first[1])).count()+restturn*2)//ボールの個数に関する条件
+	 ||(pre.first[0]&real[1]).any()||(pre.first[2]&(real[0]|real[1])).any())continue;
+      else newpre.push_back(move(pre));
+    }
+    if(!newpre.empty()){
+      state->pre=move(newpre);
+      result.push_back(move(state));
+    }
+  }
+  states=move(result);
+  return;
 }
-
 
 bool state_sort_func(const shared_ptr<state> state1,const shared_ptr<state> state2)noexcept{
   //now_stateによってソート
@@ -251,11 +287,14 @@ bool state_sort_func(const shared_ptr<state> state1,const shared_ptr<state> stat
   return false;
 }
 
-void unique(list<shared_ptr<state> >& x2)noexcept{//listからnow_stateが同じなx2をまとめる。破壊的
-  x2.sort(state_sort_func);
-  for(auto _state=x2.begin();_state!=(--x2.end());_state++){
+void unique(vector<shared_ptr<state> >& x2)noexcept{//vectorからnow_stateが同じなx2をまとめる。破壊的
+  if(x2.empty())return;
+  vector<shared_ptr<state> > result{};
+  sort(x2.begin(),x2.end(),state_sort_func);
+  for(auto _state=x2.begin();_state!=x2.end();_state++){
     auto _state2=_state;
     _state2++;
+    if(_state2==x2.end())break;
     if(((*_state)->now_state[0]==(*_state2)->now_state[0])&&((*_state)->now_state[1]==(*_state2)->now_state[1])&&((*_state)->now_state[2]==(*_state2)->now_state[2])){//同じなら、次のやつにまとめる
       for(auto& pre1:(*_state)->pre){
 	bool same=false;
@@ -280,16 +319,17 @@ void unique(list<shared_ptr<state> >& x2)noexcept{//listからnow_stateが同じ
       (*_state2)->count=min((*_state)->count,(*_state2)->count);
     (*_state)=nullptr;
     }
-    //同じでなければ、何もしない
-    _state2++;
-    //    if(_state2==x2.end())break;
+    //同じでなければ、resultへ
+    else result.push_back(move(*_state));
   }
-  x2.remove(nullptr);
+  result.push_back(move(*(--x2.end())));
+  //x2.remove(nullptr);
+  x2=move(result);
   return;
 }
 
-list<shared_ptr<state> > make_bingo(){//76個のビンゴ状態を作る
-  list<shared_ptr<state> > result{};
+vector<shared_ptr<state> > make_bingo(){//76個のビンゴ状態を作る
+  vector<shared_ptr<state> > result{};
   //上下 16
   for(int x=0;x<16;x++){
     shared_ptr<state> temp{new state};
@@ -436,158 +476,64 @@ list<shared_ptr<state> > make_bingo(){//76個のビンゴ状態を作る
   return result;
 }
 
-int main(void){
-  list<shared_ptr<state> > x2{};//処理後のnew_x2をどんどんためていく
-  list<shared_ptr<state> > new_x2{make_bingo()};//new_new_x2からこっちに移して処理する対象とする
-  list<shared_ptr<state> > new_new_x2{};//x1からmergeし作られたものを一時的に入れる
-  list<shared_ptr<state> > x1{};//new_x2から作られたものをどんどんためていく
-
-  int loopnum_max=6;
-
-  vector<bitset<64> > start(2);
-  start[0][0]=1;start[0][1]=1;start[0][12]=1;start[0][13]=1;
-  start[1][48]=1;start[1][49]=1;start[1][60]=1;start[1][61]=1;
-
-  auto func=bind(statep,start,loopnum_max,std::placeholders::_1);
-  new_x2.remove_if(func);//読む手の数を超えている
-
-  cout<<new_x2.size()<<" "<<x1.size()<<endl;
-  
-  for(int loopnum=loopnum_max-1;loopnum>=0;loopnum--){
-    //ループ
-    auto func=bind(statep,start,loopnum,std::placeholders::_1);//読む手の数
-    x1.remove_if(func);
-    //x2.remove_if(func);
-    
-    for(auto& targetx2:new_x2){
-      auto children=make_child(targetx2);
-      for(auto& child:children){
-	if(func(child))continue;//読む手の数を超えている
-	//x1のリスト内から、統合できるものを探す
-	for(auto& target:x1){
-	  shared_ptr<state> result=merge(child,target);
-	  if(result==nullptr) continue;
-	  
-	  if(func(result))continue;//読む手の数を超えている
-	  new_new_x2.push_back(move(result));
-	}
-	x1.push_back(move(child));
-      }
-    }
-    
-    x2.splice(x2.end(),new_x2);
-    unique(new_new_x2);
-    new_x2.splice(new_x2.end(),new_new_x2);
-
-    x2.remove_if(func);
-    unique(x2);
-    cout<<x2.size()<<" "<<new_x2.size()<<" "<<x1.size()<<endl;
-    //cout<<new_x2.size()<<" "<<x1.size()<<endl;
-
-    /*
-    if(loopnum==2){
-      for(auto& result:new_x2){
-	if((~(result->now_state[0]|result->now_state[1]|result->now_state[2])).count()>=48){
-	  cout<<result->now_state<<endl;
-	  for(auto& pre:result->pre)cout<<pre<<endl;
-	}
-      }
-    }
-    */
-    if(loopnum<=1){
-      for(auto& result:x2){
-	if(result->count>1){
-	  cout<<result->now_state<<endl;
-	  for(auto& pre:result->pre)cout<<pre<<endl;
-	}
-      }
-    }
-    
-  }
-
-  /*
-  for(auto& dou:new_x2){
-    cout<<dou->now_state<<endl;
-    for(auto& pre:dou->pre){
-      cout<<pre<<endl;
-    }
-    cout<<endl;
-  }
-  */
-  return 0;
+vector<bitset<64> > make_opponent_board(const vector<bitset<64> >& board) noexept{
+  vector<bitset<64> > result=board;
+  swap(result[0],result[1]);
+  return result;
 }
 
-
-int oldmain(void){
-  list<shared_ptr<state> > x2{};//処理後のnew_x2をどんどんためていく
-  list<shared_ptr<state> > new_x2{make_bingo()};//new_new_x2からこっちに移して処理する対象とする
-  list<shared_ptr<state> > new_new_x2{};//x1からmergeし作られたものを一時的に入れる
-  list<shared_ptr<state> > x1{};//new_x2から作られたものをどんどんためていく
-  /*
-  for(auto& bingo :new_x2){
-    cout<<bingo->now_state<<endl;
-    for(auto& pre:bingo->pre){
-      cout<<pre<<endl;
-    }
-    cout<<endl;
-  }
-  */
+int main(void){
+  vector<bitset<64> > start(2);
+  start[0][1]=1;start[0][5]=1;start[0][9]=1;
+  start[1][0]=1;start[1][4]=1;start[1][8]=1;
+  int loopnum_max=1;
   
-  /*
-  for(auto& bingo:temp){
-    cout<<"bingo"<<endl;
-    auto children=make_child(bingo);
-    cout<<bingo->now_state<<endl;
-    for(auto& child:children){
-      cout<<child->now_state<<endl;
-      for(auto& pre:child->pre){
-	cout<<pre<<endl;
-      }
-    }
-    cout<<endl;
-  }
-  */
-  int loopnum_max=7;
+  vector<shared_ptr<state> > myx2{};//処理後のnew_x2をどんどんためていく
+  vector<shared_ptr<state> > mynew_x2{make_bingo()};//new_new_x2からこっちに移して処理する対象とする
+  vector<shared_ptr<state> > mynew_new_x2{};//x1からmergeし作られたものを一時的に入れる
+  vector<shared_ptr<state> > myx1{};//new_x2から作られたものをどんどんためていく
+ 
+  //auto func=bind(statep,start,loopnum_max,std::placeholders::_1);
+  remove_if(start,loopnum_max,mynew_x2);//読む手の数を超えているもの、現在の盤面から至れないものを削除
   
-  auto func=bind(ballnump,loopnum_max+1,loopnum_max*2+1,std::placeholders::_1);
-  new_x2.remove_if(func);//読む手の数を超えている
-  cout<<new_x2.size()<<" "<<x1.size()<<endl;
-
+  cout<<mynew_x2.size()<<" "<<myx1.size()<<endl;
   
-  for(int loopnum=0;loopnum<loopnum_max;loopnum++){
+  for(int loopnum=loopnum_max-1;loopnum>=0;loopnum--){//loopnum=この手に至るまでのターン数。0なら今回
     //ループ
-    auto func=bind(ballnump,loopnum_max-loopnum,loopnum_max*2-loopnum*2-1,std::placeholders::_1);//読む手の数
-    x1.remove_if(func);
+    auto func=bind(statep,start,loopnum,std::placeholders::_1);//読む手の数を超えているか、現在の盤面から至れないか
+    remove_if(start,loopnum,myx1);
     //x2.remove_if(func);
-    
-    for(auto& targetx2:new_x2){
-      auto children=make_child(targetx2);
+
+    for(auto& targetx2:mynew_x2){
+      auto children=make_child(targetx2);//targetx2に至るためひとつ前の状態を作る
       for(auto& child:children){
-	if(func(child))continue;//読む手の数を超えている
-	//x1のリスト内から、統合できるものを探す
+	if(func(child))continue;//読む手の数を超えている,現在の盤から至れない
+	//x1のリスト内から、統合できるものを探す。ダブルリーチを製造。<-ここで時間がかかる
 	for(auto& target:x1){
 	  shared_ptr<state> result=merge(child,target);
-	  if(result==nullptr) continue;
-	  
-	  if(func(result))continue;//読む手の数を超えている
-
-	  /*
-	  if(loopnum==3&&result!=nullptr){
-	    cout<<result->now_state<<endl;
-	    for(auto& pre:result->pre)cout<<pre<<endl;
-	  }
-	  */
-	  
-	  new_new_x2.push_back(move(result));
+	  if(result==nullptr) continue;//統合できない	  
+	  if(func(result))continue;//読む手の数を超えている,現在の盤から至れない
+	  mynew_new_x2.push_back(move(result));
 	}
-	x1.push_back(move(child));
+	myx1.push_back(move(child));
       }
-
     }
-    x2.splice(x2.end(),new_x2);
-    new_x2.splice(new_x2.end(),new_new_x2);
 
-    cout<<new_x2.size()<<" "<<x1.size()<<endl;
+    myx2.insert(myx2.end(),mynew_x2.begin(),mynew_x2.end());
+    unique(mynew_new_x2);
+    mynew_x2=move(mynew_new_x2);
+    remove_if(start,loopnum,myx2);
+    unique(myx2);
+    cout<<myx2.size()<<" "<<mynew_x2.size()<<" "<<myx1.size()<<endl;
+
+    if(loopnum<=2){
+      for(auto& result:x2){
+	//if(result->count>1){
+	  cout<<result->now_state<<endl;
+	  for(auto& pre:result->pre)cout<<pre<<endl;
+	  //}
+      }
+    }    
   }
 
   /*
