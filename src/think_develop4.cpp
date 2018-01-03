@@ -459,7 +459,7 @@ bitset<64> random1(const bitset<64>& target) noexcept{
 }
 
 //parentのpreから一手前のstateを作る
-vector<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{
+inline vector<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{
   vector<shared_ptr<state> > result{};
   for(auto&pre:parent->pre){
     if(!pre.unchange){
@@ -535,7 +535,7 @@ vector<shared_ptr<state> > make_child(const shared_ptr<state>& parent) noexcept{
 }
 
 //そのpre盤面に至るまでの最低ターン数
-int countpre_x2(const vector<bitset<64> >& board,bool me,const vector<bitset<64> >& preboard)noexcept{
+inline int countpre_x2(const vector<bitset<64> >& board,bool me,const vector<bitset<64> >& preboard)noexcept{
   //ボールの場所に関する拘束
   if((preboard[0]&board[1]).any()||(preboard[2]&(board[0]|board[1])).any()){//決して作れない
     return -1;
@@ -643,7 +643,7 @@ void check_x2pre(const vector<bitset<64> >& board,int loopnum,bool me,shared_ptr
   op: 今後全てのpreが作れないものは削除or result[0][N]/result[1][N]へ
   削除されたらnullptr
 */
-void remove_if_x1(const vector<bitset<64> >& board,int loopnum,bool me,shared_ptr<state>& x1,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16>& s3x1spot)noexcept{
+inline void remove_if_x1(const vector<bitset<64> >& board,int loopnum,bool me,shared_ptr<state>& x1,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16>& s3x1spot)noexcept{
    if((x1->type&tos3x1).any()&&(s3x1spot&x1->s3x1spot).any()){//すでに完成しているs3x1を作っても意味はないので削除
      x1=nullptr;
      return;
@@ -748,7 +748,7 @@ inline shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<
 }
 
 //x1がs3x1ならコピーした上で加える
-void levelup_if(shared_ptr<state>& x1,vector<shared_ptr<state> >& new_new_x2)noexcept{
+inline void levelup_if(shared_ptr<state>& x1,vector<shared_ptr<state> >& new_new_x2)noexcept{
   if(x1->type==tobingos1&&x1->s3x1spot.any()){
     shared_ptr<state> temp{new state{*x1}};
     temp->type=tos3x1;
@@ -915,7 +915,7 @@ vector<vector<vector<shared_ptr<state> > > > bingoloop(const vector<bitset<64> >
 }
 
 //tobingo,tos3x1を計算する
-loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me) noexcept{
+loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int level) noexcept{
   vector<vector<vector<shared_ptr<state> > > > result(2,vector<vector<shared_ptr<state> > >(loopnum_max+1));
   /*
     result[0][N]: Nターン後に完成するto_bingoの(me)?x2:x1を保管する
@@ -940,7 +940,7 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me) no
   }
   //remove(new_x2.begin(),new_x2.end(),nullptr);
   removenullptr(new_x2);
-  cout<<"bingo: "<<new_x2.size()<<endl;
+  cout<<"bingo: "<<new_x2.size()<<" "<<loopnum_max<<" "<<me<<" "<<level<<endl;
 
   for(int loopnum=loopnum_max-1;loopnum>=0;loopnum--){
     for(auto& x1:_x1){
@@ -992,7 +992,7 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me) no
 	  new_new_x2.push_back(move(result));
 	}
 	//s3x1なら、x2に昇格
-	levelup_if(child,new_new_x2);
+	if(level>0)levelup_if(child,new_new_x2);
 	_x1.push_back(move(child));
       }
     }
@@ -1043,12 +1043,24 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me) no
   return _result;
 }
 
-loopresult looptask(const vector<bitset<64> >& board,int loopnum_max,bool me) noexcept{
+loopresult looptask(const vector<bitset<64> >& board,int loopnum_max,bool me,int level) noexcept{
   loopresult result{};
   for(int loopnum=loopnum_max;loopnum>=0;loopnum--){
-    result=s3x1loop(board,loopnum,me);
+    result=s3x1loop(board,loopnum,me,level);
     if(!result.result.empty())return result;
   }
+  return result;
+}
+
+bitset<64> go_bingo(const vector<bitset<64> >& board){
+  static const auto bingos=make_bingo();
+  bitset<64> result{};
+  for(const auto& bingo:bingos){
+    if((board[0]&bingo->now_state[0]).count()==3&&(board[1]&bingo->now_state[0]).count()==0){
+      result|=(~board[0])&bingo->now_state[0];
+    }
+  }
+  result&=canplace(board);
   return result;
 }
 
@@ -1059,21 +1071,35 @@ bitset<64> think(const vector<bitset<64> >& board){
   }
   vector<bitset<64> > mystart=board;
   vector<bitset<64> > opstart=make_opponent_board(mystart);
-
+  
+  //とりあえず自分のリーチがあったらノータイムでビンゴにする
+  bitset<64> easywin=go_bingo(mystart);
+  if(easywin.any())return random1(easywin);
+  //とりあえず相手のリーチがあったらノータイムで止める
+  bitset<64> easyblock=go_bingo(opstart);
+  if(easyblock.any())return random1(easyblock);
+  
   vector<vector<vector<shared_ptr<state> > > > mys3x1_x2{};
   bitset<16> mys3x1spot{};
   vector<vector<vector<shared_ptr<state> > > > ops3x1_x1{};
   bitset<16> ops3x1spot{};
-  
+
+  int bingoloopnum_max=7;
   int s3x1loopnum_max=6;
-  auto mys3x1fu=async(launch::async,looptask,mystart,s3x1loopnum_max,true);
-  auto ops3x1fu=async(launch::async,looptask,opstart,s3x1loopnum_max,false);
-  loopresult myresult=mys3x1fu.get();
-  loopresult opresult=ops3x1fu.get();
-  mys3x1_x2=move(myresult.result);
-  mys3x1spot=move(myresult.s3x1spot);
-  ops3x1_x1=move(opresult.result);
-  ops3x1spot=move(opresult.s3x1spot);
+  auto mybingofu=async(launch::async,looptask,mystart,bingoloopnum_max,true,0);
+  auto opbingofu=async(launch::async,looptask,opstart,bingoloopnum_max,false,0);
+  auto mys3x1fu=async(launch::async,looptask,mystart,s3x1loopnum_max,true,1);
+  auto ops3x1fu=async(launch::async,looptask,opstart,s3x1loopnum_max,false,1);
+  loopresult myresultbingo=mybingofu.get();
+  loopresult opresultbingo=opbingofu.get();
+  loopresult myresults3x1=mys3x1fu.get();
+  loopresult opresults3x1=ops3x1fu.get();
+  mys3x1_x2=move(myresults3x1.result);
+  mys3x1_x2[0]=move(myresultbingo.result[0]);
+  mys3x1spot=move(myresults3x1.s3x1spot);
+  ops3x1_x1=move(opresults3x1.result);
+  ops3x1_x1[0]=move(opresultbingo.result[0]);
+  ops3x1spot=move(opresults3x1.s3x1spot);
   
   // cout<<mys3x1_x2[1][1].size()<<endl;
   // for(auto& x:mys3x1_x2[1][1]){
@@ -1121,7 +1147,7 @@ bitset<64> think(const vector<bitset<64> >& board){
       cout<<"not attack my bingo"<<endl;
     }else{
       //countがもっとも小さいものだけでも止める
-      for(int count=0;count<s3x1loopnum_max;count++){
+      for(int count=1;count<s3x1loopnum_max;count++){
 	bitset<64> stopaction;
 	for(auto& x1:ops3x1_x1[0][0]){
 	  if(x1->count<=count){
@@ -1145,7 +1171,8 @@ bitset<64> think(const vector<bitset<64> >& board){
 	t1_myaction&=t1_goodpoint;
 	if(t1_myaction.any())break;
       }
-      if(!t1_myaction.any())myaction=myaction;
+      if(t1_myaction.any())myaction=t1_myaction;
+      else myaction=myaction;
       cout<<"connot block op's bingo"<<endl;
     }
   }else{
@@ -1198,50 +1225,7 @@ bitset<64> think(const vector<bitset<64> >& board){
   }
   cout<<myaction<<endl;
 
-  //第３タスク
-  //置いたことにより今は満たしていない相手のx1のpreを満たすことは避けたい
-  //なぜなら、相手のx1が完成することで、opactの拘束が新たに発生するため。
-  //保守的すぎるか。相手のpreを破壊するくらいがよいのかもしれない
-  bitset<64> t3_1_myaction=myaction;
-  for(auto& x1:ops3x1_x1[0][1]){//まずはtobingoのx1を防ぐ
-    for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
-      t3_1_myaction&=(~pre.board[1]);
-    }
-  }
-  if(t3_1_myaction.any()){//次にtos3x1のx1を防ぐ
-    bitset<64> t3_2_myaction=t3_1_myaction;
-    for(auto& x1:ops3x1_x1[1][1]){
-      for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
-	t3_2_myaction&=(~pre.board[1]);
-      }
-    }
-    if(t3_2_myaction.any()) {
-      myaction=t3_2_myaction;
-      cout<<"block op's tobingo/s3x1x1pre"<<endl;
-    }
-    else{
-      myaction=t3_1_myaction;
-      cout<<"block op's tobingopre"<<endl;
-    }
-  }else{//tos3x1のx1だけでも防ぐ
-    bitset<64> t3_2_myaction=myaction;
-    for(auto& x1:ops3x1_x1[1][1]){
-      for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
-	t3_2_myaction&=(~pre.board[1]);
-      }
-    }
-    if(t3_2_myaction.any()) {
-      myaction=t3_2_myaction;
-      cout<<"block op's s3x1x1pre"<<endl;
-    }
-    else {
-      myaction=myaction;
-      cout<<"connot block op's tobingo/s3x1x1pre"<<endl;
-    }
-  }
-  cout<<myaction<<endl;
-  
-  //第４タスク
+  //第3タスク
   //自分の今は完成していないx2のpreを満たすと相手が嫌がる
   bitset<64> t4_1_myaction=myaction;
   //まずはtobingo
@@ -1281,36 +1265,54 @@ bitset<64> think(const vector<bitset<64> >& board){
   }
   cout<<myaction<<endl;
   
+  
+  //第4タスク
+  //置いたことにより今は満たしていない相手のx1のpreを満たすことは避けたい
+  //なぜなら、相手のx1が完成することで、opactの拘束が新たに発生するため。
+  //少し保守的すぎるか。いい場所を取ろうとする意思に欠く。相手のpreを破壊するくらいがよいのかもしれない
+  bitset<64> t3_1_myaction=myaction;
+  for(auto& x1:ops3x1_x1[0][1]){//まずはtobingoのx1を防ぐ
+    for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
+      t3_1_myaction&=(~pre.board[1]);
+    }
+  }
+  if(t3_1_myaction.any()){//次にtos3x1のx1を防ぐ
+    bitset<64> t3_2_myaction=t3_1_myaction;
+    for(auto& x1:ops3x1_x1[1][1]){
+      for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
+	t3_2_myaction&=(~pre.board[1]);
+      }
+    }
+    if(t3_2_myaction.any()) {
+      myaction=t3_2_myaction;
+      cout<<"block op's tobingo/s3x1x1pre"<<endl;
+    }
+    else{
+      myaction=t3_1_myaction;
+      cout<<"block op's tobingopre"<<endl;
+    }
+  }else{//tos3x1のx1だけでも防ぐ
+    bitset<64> t3_2_myaction=myaction;
+    for(auto& x1:ops3x1_x1[1][1]){
+      for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
+	t3_2_myaction&=(~pre.board[1]);
+      }
+    }
+    if(t3_2_myaction.any()) {
+      myaction=t3_2_myaction;
+      cout<<"block op's s3x1x1pre"<<endl;
+    }
+    else {
+      myaction=myaction;
+      cout<<"connot block op's tobingo/s3x1x1pre"<<endl;
+    }
+  }
+  cout<<myaction<<endl;
+  
+  
   //第5タスク
   //まだ存在しうるbingoに含まれる場所の方が強い
-      /*
-    //相手の妨害ができないということ.悪あがきするしか無い
-    myaction=canplace(board);
-    vector<int> myaction_p(64,0);
-    for(int i=0;i<64;i++){
-    if(myaction[i]==0){
-    myaction_p=-1;
-    continue;
-    }
-    bitset<64> tempaction{};
-    tempaction[i]=1;
-      for(auto& x1:ops3x1_x1[0][0]){
-	for(auto& next:x1->next) {
-	  if((tempaction&next.opact).any)myaction_p[i]++;
-	}
-      }
-      for(auto& x2:mys3x1_x2[0][0]){
-	for(auto& pre:=x2->pre){
-	  if((tempaction&pre.myact).any())myaction_p[i]++;
-	}
-      }
-    }
-    auto maxp=max_element(myaction_p.begin(),myaction_p.end());
-    myaction.reset();
-    for(int i=0;i<64;i++){
-      if(myaction_p[i]==*maxp)myaction[i]=1;
-    }
-    */
+  //投票するか
 
   //最後はランダム
   if(myaction.count()!=1){
