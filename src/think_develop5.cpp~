@@ -714,8 +714,8 @@ inline shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<
   //x1は、nextは1つずつしかない(前提)
   if((state1->next[0].opact&state2->next[0].opact).any())return nullptr;//相手が止める行動が重複
   shared_ptr<state> result=nullptr; 
-  for(auto& pre1: state1->pre){
-    for(auto& pre2: state2->pre){
+  for(const auto& pre1: state1->pre){
+    for(const auto& pre2: state2->pre){
       if((pre1.myact&pre2.myact).none())continue;//自分の行動を共有しない
       if((((pre1.board[0]|pre1.board[1])&pre2.board[2])|((pre2.board[0]|pre2.board[1])&pre1.board[2])).any())continue;//要求を同時に満たせない
       if(result==nullptr){
@@ -914,13 +914,9 @@ void removenullptr(vector<shared_ptr<state> >& xx) noexcept{
   return ;
 }
 
-//tobingoを計算する
-vector<vector<vector<shared_ptr<state> > > > bingoloop(const vector<bitset<64> >& board,int loopnum_max,bool me) noexcept{
-}
-
 //tobingo,tos3x1を計算する
 loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int level) noexcept{
-  vector<vector<vector<shared_ptr<state> > > > result(2,vector<vector<shared_ptr<state> > >(loopnum_max+1));
+  vector<vector<vector<shared_ptr<state> > > > result(2,vector<vector<shared_ptr<state> > >(2));
   /*
     result[0][N]: Nターン後に完成するto_bingoの(me)?x2:x1を保管する
     result[1][N]: Nターン後に完成するto_s3x1の(me)?x2:x1を保管する
@@ -1345,6 +1341,8 @@ bitset<64> think(const vector<bitset<64> >& board){
   for(auto i=0;i<64;i++){
     if(myaction[i]&&goodpos[i]<maxnum)myaction[i]=0;
   }
+  cout<<"seems strong"<<endl;
+  cout<<myaction<<endl;
   
   //最後はランダム
   if(myaction.count()!=1){

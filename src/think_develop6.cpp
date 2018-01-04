@@ -1,4 +1,20 @@
-//g++ -o think_develop4 think_develop4.cpp -std=c++14 -lpthread
+//g++ -o think_develop6 think_develop6.cpp -std=c++14 -lpthread
+/*
+  仕組み
+  *終了状態からの逆算を探索する。
+  　現在の盤面からN手先までボトムアップ的に探索すると、計算量は16のN乗となる。N=13なら、計算量は10の17乗近く。ギガヘルツ(10の9乗)で計算しても、時間がかかりすぎる。
+  　ニューラルネットワークは、論理的な積み重ねの思考が要求されるこのゲームで、うまく動くものが作れる自信がない。誤差を最小にする過程で、単純な相手のリーチを止めると言った行動が誤差として残ってしまうことを防げる自信がない。
+　　そこで、76通り存在するビンゴ状態を終了状態とし、そこから逆算してダブルリーチなど勝ちの盤面を生成する。現在の盤面がそれらの勝ちの盤面のどれかに該当するなら、その手をさせば良い。また、相手がそれらの勝ちの盤面に至りそうなら、それをとめればよい。現在の盤面からN手以内に至れないビンゴ状態等を計算から除くことで、計算量はそこまで大きくならず、実験的にはN=13の時に計算量は10の8乗程度となる。実際には、ヒトが我慢して待てる範囲内の時間で9~15手読める。
+
+　*欠点
+　　逆算によって考えることの弊害。現在の盤面が「勝ちだ」と思っても、実際に交互にコマを置いていくと途中で相手のリーチが完成したりしてその対応に追われ勝てないことがある。これを改善するためには、現在の盤面が「勝ちだ」と思ったときに、ボトムアップ的にもう一度計算してやる必要がある。普通にボトムアップ的に計算する時と比べ、自分の勝利までの手が決まっている分計算量は小さくなるはずではある。
+　　計算量は小さいが、逆算には論理的にいろいろな処理が必要で、単純なボトムアップと比べて処理が複雑になる。このプログラム内にも一部、論理的に完璧でない部分があることを自覚しているが、どこが完璧でないのか自分でも分からなくなってしまった。
+
+　*タスク
+　　相手が勝ちの盤面に至るのを防ぐ、自分が勝ちの盤面なら勝ちに突き進む。という行動を徹底する上で、残ったタスク空間で行うこと。
+　　上記を徹底すれば、読む手数N以上の見事なコンボを相手に打たれるケースを除けば、負けることはない。すると、ゲームは終盤の置ける場所がないから仕方なく置くという状況にもつれ込む。このとき、高さ2の場所に相手にとって置けない場所(置くと自分が勝つ)が多くあるプレイヤーが勝つ。そのため、このような場所を作ること、作らせないことが第２タスクとなる。
+　　第３タスク以降は、読む手数N以上のコンボを防ぐorいつの間にか自分が作ることを目標に、製作者のセンスで設定した。
+ */
 
 #include <iostream>
 #include <bitset> //bitset
@@ -42,6 +58,7 @@ public:
   vector<bitset<64> > board;
   bitset<64> myact{};
   bitset<64> strongA{};//myactで置きたいMの下。(make_child時にこのAを除いたらs3x1になる)
+  bitset<64> badpoint{};//myactで置く予定のAの場所。相手が置いてくれたらむしろ嬉しい
   bool ssx1=false;//sのx1のmerge可能性のあるpre
   bool swx1=false;//swのx1のmerge1可能性のあるpre
   bool unchange=false;//for make_child
@@ -50,12 +67,6 @@ _pre::_pre(): board(3){
 }
 
 class state;
-
-class _next{
-public:
-  bitset<64> opact{};//次に至るのを対戦相手が妨害できる行動(実際に置けるとは限らない)
-  shared_ptr<state> nextstate{};
-};
 
 class loopresult{
 public:
@@ -142,20 +153,15 @@ public:
   //state(const state&);
   vector<bitset<64> > now_state;//自分のターン終了時の状態
   vector<_pre> pre{};//自分のターン開始時の状態の条件と、その時にこの状態になるために自分がとる行動のペアたち
-  vector<_next> next{};//次に至るのを対戦相手が妨害できる行動(実際に置けるとは限らない)と、次の状態
+  vector<bitset<64> > next{};//次に至るのを対戦相手が妨害できる行動(実際に置けるとは限らない)
   int count=0;//ビンゴまでの手数(最大)
-  
+  int mincount=0;//ビンゴまでの手数(最小)
   bitset<8> type{};
   bitset<16> s3x1spot{};//tos3x1の、完成した場合の拘束スポット
   void genpre(bool) noexcept;//now_stateからpreを自動生成する
 };
 state::state(): now_state(3) {
 }
-/*
-  state::state(const state& target){
-  now_state=target.now_state;
-  pre=target.
-  }*/
 
 const bitset<8> tobingo  {"00001111"};//bingoに至る
 const bitset<8> tobingon {"00000001"};//bingoに至る普通
@@ -205,6 +211,7 @@ void state::genpre(bool unchange=false) noexcept{//now_stateからpreを自動�
 	temppre.board[1][x*4+z]=0;//コマを取り除く
 	for(int _z=z;_z<4;_z++)temppre.board[2][x*4+_z]=1;//そこから上を空にする
 	temppre.myact[x*4+z]=1;
+	temppre.badpoint[x*4+z]=1;
 	pre.push_back(move(temppre));
 	break;
       }
@@ -220,6 +227,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
     shared_ptr<state> temp{new state};
     for(int _z=0;_z<4;_z++)temp->now_state[0][x*4+_z]=1;
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -234,6 +242,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
 	for(int _x=0;_x<4;_x++)temp->now_state[1][y*16+_x*4+_z]=1;
       }
       temp->count=0;
+      temp->mincount=0;
       temp->type=tobingos2;
       temp->genpre();
       result.push_back(move(temp));
@@ -248,6 +257,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
 	for(int _y=0;_y<4;_y++)temp->now_state[1][_y*16+x*4+_z]=1;
       }
       temp->count=0;
+      temp->mincount=0;
       temp->type=tobingos2;
       temp->genpre();
       result.push_back(move(temp));
@@ -262,6 +272,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int i=0;i<4;i++)temp->now_state[1][i*16+i*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -273,6 +284,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int i=0;i<4;i++)temp->now_state[1][(3-i)*16+i*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -286,6 +298,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<_y;_z++)temp->now_state[1][_y*16+x*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -297,6 +310,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<(3-_y);_z++)temp->now_state[1][_y*16+x*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -310,6 +324,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<_x;_z++)temp->now_state[1][y*16+_x*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -321,6 +336,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<(3-_x);_z++)temp->now_state[1][y*16+_x*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -333,6 +349,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<i;_z++)temp->now_state[1][i*16+i*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -344,6 +361,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<(3-i);_z++)temp->now_state[1][i*16+i*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -355,6 +373,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<i;_z++)temp->now_state[1][i*16+(3-i)*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -366,6 +385,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
       for(int _z=0;_z<(3-i);_z++)temp->now_state[1][i*16+(3-i)*4+_z]=1;
     }
     temp->count=0;
+    temp->mincount=0;
     temp->type=tobingos2;
     temp->genpre();
     result.push_back(move(temp));
@@ -374,7 +394,7 @@ vector<shared_ptr<state> > make_bingo() noexcept{
   return result;
 }
 
-//ビンゴ状態を作る
+//デバッグ用ビンゴ状態を作る
 vector<shared_ptr<state> > make_debug() noexcept{
   vector<shared_ptr<state> > result{};
   //左右 16
@@ -386,6 +406,7 @@ vector<shared_ptr<state> > make_debug() noexcept{
 	for(int _x=0;_x<4;_x++)temp->now_state[1][y*16+_x*4+_z]=1;
       }
       temp->count=0;
+      temp->mincount=0;
       temp->type=tobingos2;
       temp->genpre();
       result.push_back(move(temp));
@@ -400,6 +421,7 @@ vector<shared_ptr<state> > make_debug() noexcept{
 	for(int _y=0;_y<4;_y++)temp->now_state[1][_y*16+x*4+_z]=1;
       }
       temp->count=0;
+      temp->mincount=0;
       temp->type=tobingos2;
       temp->genpre();
       result.push_back(move(temp));
@@ -475,20 +497,23 @@ inline vector<shared_ptr<state> > make_child(const shared_ptr<state>& parent) no
       else if(parent->type==tobingos2)temp->type=tobingow1;
       else temp->type=tobingon;
       //要求を満たせなくする相手のアクションとは、空要求の場所を(次に自分が置きたい場所を含む)を埋めることである。埋めることができる場所は、一番下のempty
-      _next next{};
+      bitset<64> next{};
       for(int x=0;x<16;x++){
 	for(int z=0;z<4;z++){
-	  if(temp->now_state[2][x*4+z]){
-	    next.opact[x*4+z]=1;
+	  if(temp->now_state[2][x*4+z]&&pre.badpoint[x*4+z]==0){
+	    next[x*4+z]=1;
 	    break;
 	  }
 	}
       }
-      next.nextstate=parent;
-      temp->next.push_back(move(next));
-      temp->count=parent->count+1;
-      temp->genpre(true);
-      result.push_back(move(temp));
+      if(next.any()){
+	//next.nextstate=parent;
+	temp->next.push_back(move(next));
+	temp->count=parent->count+1;
+	temp->mincount=parent->mincount+1;
+	temp->genpre(true);
+	result.push_back(move(temp));
+      }
     }
     //上のAを取り除く
     for(int x=0;x<16;x++){
@@ -508,24 +533,24 @@ inline vector<shared_ptr<state> > make_child(const shared_ptr<state>& parent) no
 	  }else{
 	    temp->type=tobingon;
 	  }
-	  _next next{};
+	  bitset<64> next{};
 	  //取り除いた土台の場所以外の場所に置くと妨害できる
 	  //don't careの場所、または、取り除いた土台以外の場所の一番下のempty
-	  next.opact.set();
-	  for(auto& req:pre.board) next.opact&=~req;//don't careを抽出
+	  next.set();
+	  for(auto& req:pre.board) next&=~req;//don't careを抽出
 	  //一番下のemptyを抽出
 	  for(int _x=0;_x<16;_x++){
 	    for(int _z=0;_z<4;_z++){
 	      if(_x==x)break;//取り除いた土台の場所以外
 	      if(pre.board[2][_x*4+_z]){
-		next.opact[_x*4+_z]=1;
+		next[_x*4+_z]=1;
 		break;
 	      }
 	    }
 	  }
 	  temp->next.push_back(move(next));
 	  temp->count=parent->count+1;
-	  //if(parent->man&&(z<3)&&(pre.second[x*4+z+1]))temp->man=1;
+	  temp->mincount=parent->mincount+1;
 	  temp->genpre();
 	  result.push_back(move(temp));
 	  break;
@@ -573,7 +598,7 @@ bitset<64> gopre_x2(const vector<bitset<64> >& board,const vector<bitset<64> >& 
 //op: boardから今後preが作れないnew_x2は削除
 //result.size()で分岐?
 //削除されたらnullptr
-void check_x2pre(const vector<bitset<64> >& board,int loopnum,bool me,shared_ptr<state>& x2,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16> s3x1spot)noexcept{
+void check_x2pre(const vector<bitset<64> >& board,int loopnum,bool me,shared_ptr<state>& x2,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16>& s3x1spot)noexcept{
   if(((~board[0])&x2->now_state[0]).any()||((~board[0])&(~board[1])&(x2->now_state[1])).any()||((board[0]|board[1])&(x2->now_state[2])).any()){//now_stateを満たしていない
     if((x2->type&tos3x1).any()&&(s3x1spot&x2->s3x1spot).any()){//すでに完成しているs3x1を作っても意味はないので削除
       x2=nullptr;
@@ -712,10 +737,10 @@ inline shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<
   //２つのx1stateがダブルリーチ可能ならmerge、そうでないならnullptr
   //要求を同時に満たすことが可能で、その時の自分の行動を共有し、相手が止める行動が重複しなければよい
   //x1は、nextは1つずつしかない(前提)
-  if((state1->next[0].opact&state2->next[0].opact).any())return nullptr;//相手が止める行動が重複
+  if((state1->next[0]&state2->next[0]).any())return nullptr;//相手が止める行動が重複
   shared_ptr<state> result=nullptr; 
-  for(auto& pre1: state1->pre){
-    for(auto& pre2: state2->pre){
+  for(const auto& pre1: state1->pre){
+    for(const auto& pre2: state2->pre){
       if((pre1.myact&pre2.myact).none())continue;//自分の行動を共有しない
       if((((pre1.board[0]|pre1.board[1])&pre2.board[2])|((pre2.board[0]|pre2.board[1])&pre1.board[2])).any())continue;//要求を同時に満たせない
       if(result==nullptr){
@@ -728,11 +753,21 @@ inline shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<
 	if((state1->type&tos3x1).any()||(state2->type&tos3x1).any()){
 	  result->type=tos3x1;
 	  result->s3x1spot=state1->s3x1spot|state2->s3x1spot;
-	  if((state1->type&tos3x1).any()&&(state2->type&tos3x1).any())result->count=max(state1->count,state2->count);
-	  else if((state1->type&tos3x1).any()) result->count=state1->count;
-	  else if((state2->type&tos3x1).any()) result->count=state2->count;
+	  if((state1->type&tos3x1).any()&&(state2->type&tos3x1).any()){
+	    result->count=max(state1->count,state2->count);
+	    result->mincount=min(state1->mincount,state2->mincount);
+	  }
+	  else if((state1->type&tos3x1).any()) {
+	    result->count=state1->count;
+	    result->mincount=state1->mincount;
+	  }
+	  else if((state2->type&tos3x1).any()) {
+	    result->count=state2->count;
+	    result->mincount=state2->mincount;
+	  }
 	}else{
 	  result->count=max(state1->count,state2->count);
+	  result->mincount=min(state1->mincount,state2->mincount);
 	  if((pre1.ssx1&&pre2.swx1)||(pre2.ssx1&&pre1.swx1)) result->type=tobingos2;
 	  else result->type=tobingon;
 	}
@@ -743,6 +778,7 @@ inline shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<
       temppre.board[2]=pre1.board[2]|pre2.board[2];
       temppre.myact=pre1.myact&pre2.myact;
       temppre.strongA=pre1.strongA|pre2.strongA;
+      temppre.badpoint=pre1.badpoint|pre2.badpoint;
       result->pre.push_back(temppre);
     }
   }
@@ -750,11 +786,13 @@ inline shared_ptr<state> merge(const shared_ptr<state>& state1,const shared_ptr<
 }
 
 //x1がs3x1ならコピーした上で加える
-//genpreし直す?
+//genpreし直す
 inline void levelup_if(shared_ptr<state>& x1,vector<shared_ptr<state> >& new_new_x2)noexcept{
   if(x1->type==tobingos1&&x1->s3x1spot.any()){
     shared_ptr<state> temp{new state{*x1}};
     temp->type=tos3x1;
+    temp->count=0;
+    temp->mincount=0;
     temp->genpre(true);
     new_new_x2.push_back(move(temp));
   }
@@ -805,7 +843,8 @@ void unique(vector<shared_ptr<state> >& new_x2){
       for(auto& next1:(*_state)->next){
 	bool same=false;
 	for(auto& next2:(*_state2)->next){
-	  if(next1.nextstate==next2.nextstate){
+	  //if(next1.nextstate==next2.nextstate){
+	  if(next1==next2){
 	    same=true;
 	    break;
 	  }
@@ -813,6 +852,7 @@ void unique(vector<shared_ptr<state> >& new_x2){
 	if(!same) (*_state2)->next.push_back(move(next1));
       }
       (*_state2)->count=min((*_state)->count,(*_state2)->count);
+      (*_state2)->mincount=min((*_state)->mincount,(*_state2)->mincount);
       //(*_state2)->type放置で問題ない
       (*_state)=nullptr;
     }
@@ -820,14 +860,13 @@ void unique(vector<shared_ptr<state> >& new_x2){
     else result.push_back(move(*_state));
   }
   result.push_back(move(*(--new_x2.end())));
-  //x2.remove(nullptr);
   new_x2=move(result);
   return;
 }
 
 //_x1を削除する
 //op: boardからopは削除or result[0][N]/result[1][N]へ
-void del_x1(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >& _x1,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16> s3x1spot) noexcept{
+void del_x1(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >& _x1,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16>& s3x1spot) noexcept{
   if(me){//何もしない
     _x1.clear();
     return;
@@ -864,7 +903,7 @@ void del_x1(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >&
 
 //new_x2を削除する
 //me: boardからnew_x2は削除or result[0][N]/result[1][N]へ
-void del_x2(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >& new_x2,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16> s3x1spot) noexcept{
+void del_x2(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >& new_x2,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16>& s3x1spot) noexcept{
   if(me){//preの現在からのターン数によって分類
     for(auto& x2:new_x2){
       if(((~board[0])&x2->now_state[0]).any()||((~board[0])&(~board[1])&(x2->now_state[1])).any()||((board[0]|board[1])&(x2->now_state[2])).any()){//now_stateを満たしていない
@@ -914,13 +953,23 @@ void removenullptr(vector<shared_ptr<state> >& xx) noexcept{
   return ;
 }
 
-//tobingoを計算する
-vector<vector<vector<shared_ptr<state> > > > bingoloop(const vector<bitset<64> >& board,int loopnum_max,bool me) noexcept{
+//すでに完成しているs3x1spotを除く
+void removebads3x1spot(vector<shared_ptr<state> >& xx,const bitset<16>& s3x1spot){
+  vector<shared_ptr<state> > result{};
+  for(auto& x:xx){
+    if((x->type&tos3x1).any()&&(s3x1spot&x->s3x1spot).any()){//すでに完成しているs3x1を作っても意味はない
+      continue;
+    }else{
+      result.push_back(move(x));
+    }
+  }
+  xx=move(result);
+  return;
 }
 
 //tobingo,tos3x1を計算する
 loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int level) noexcept{
-  vector<vector<vector<shared_ptr<state> > > > result(2,vector<vector<shared_ptr<state> > >(loopnum_max+1));
+  vector<vector<vector<shared_ptr<state> > > > result(2,vector<vector<shared_ptr<state> > >(2));
   /*
     result[0][N]: Nターン後に完成するto_bingoの(me)?x2:x1を保管する
     result[1][N]: Nターン後に完成するto_s3x1の(me)?x2:x1を保管する
@@ -942,7 +991,6 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int
     //op: boardから今後preが作れないnew_x2は削除
     check_x2pre(board,loopnum_max,me,x2,result,s3x1spot);
   }
-  //remove(new_x2.begin(),new_x2.end(),nullptr);
   removenullptr(new_x2);
   cout<<"bingo: "<<new_x2.size()<<" "<<loopnum_max<<" "<<me<<" "<<level<<endl;
 
@@ -957,42 +1005,15 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int
       remove_if_x1(board,loopnum,me,x1,result,s3x1spot);
     }
     removenullptr(_x1);
-    /*
-    if(loopnum==2){
-      for(auto& x1:_x1){
-	cout<<endl<<x1->now_state;
-	for(auto& pre:x1->pre)cout<<pre;
-      }
-    }
-    */
     for(auto& x2:new_x2){
-      //if(loopnum==2)cout<<endl<<endl<<x2->now_state;
-      //cout<<x2->type<<endl;
       auto children=make_child(x2);//x1を生成
       for(auto& child :children){
        	remove_if_x1(board,loopnum,me,child,result,s3x1spot);
 	if(child==nullptr)continue;//現在の盤から至れない
-	
-	//cout<<child->now_state;
-	//cout<<child->type<<endl;
-	//cout<<child->s3x1spot<<endl<<endl;
-	//for(auto& pre:child->pre)cout<<pre<<endl;
-	//for(auto& next:child->next)cout<<next.opact<<endl;  
-	
 	//x1のリスト内から、統合できるものを探す。ダブルリーチを製造.
 	for(auto& target:_x1){
 	  shared_ptr<state> result=merge(child,target);
 	  if(result==nullptr)continue;//統合できない
-	  /*
-	  if(loopnum==2){
-	    cout<<"merge"<<endl;
-	    cout<<child->now_state;
-	    cout<<child->next[0].opact;
-	    cout<<target->now_state;
-	    cout<<target->next[0].opact;
-	    cout<<result->now_state;
-	  }
-	  */
 	  new_new_x2.push_back(move(result));
 	}
 	//s3x1なら、x2に昇格
@@ -1018,14 +1039,6 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int
     if(new_x2.size()>10000){//時間がかかりすぎる
       return loopresult{};
     }
-	/*
-    if(loopnum==3){
-      for(auto& x2:new_x2){
-	cout<<endl<<x2->now_state;
-	for(auto& next:x2->next)cout<<next.opact;
-      }
-    }
-    */
   }
 
   if(!me){
@@ -1041,6 +1054,9 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int
   del_x2(board,me,new_x2,result,s3x1spot);
 
   //ここでresultの重複解除や、s3x1の削除を行いたい
+  //重複削除はmustではないのでs3x1のs3x1spotの削除だけ行う
+  removebads3x1spot(result[1][0],s3x1spot);
+  removebads3x1spot(result[1][1],s3x1spot);
   loopresult _result{};
   _result.result=move(result);
   _result.s3x1spot=move(s3x1spot);
@@ -1123,36 +1139,16 @@ bitset<64> think(const vector<bitset<64> >& board){
   mys3x1spot=move(myresults3x1.s3x1spot);
   ops3x1_x1=move(opresults3x1.result);
   ops3x1_x1[0]=move(opresultbingo.result[0]);
-  ops3x1spot=move(opresults3x1.s3x1spot);
-  
-  // cout<<mys3x1_x2[1][1].size()<<endl;
-  // for(auto& x:mys3x1_x2[1][1]){
-  //   cout<<x->now_state<<endl;
-  // }
-
-  // cout<<ops3x1_x1[1][1].size()<<endl;
-  // for(auto& x:ops3x1_x1[1][1]){
-  //   cout<<x->now_state<<endl;
-  // }
-  // cout<<mys3x1_x2[1][0].size()<<endl;
-  // for(auto& x:mys3x1_x2[1][0]){
-  //   cout<<x->now_state<<endl;
-  // }
-
-  // cout<<ops3x1_x1[1][0].size()<<endl;
-  // for(auto& x:ops3x1_x1[1][0]){
-  //   cout<<x->now_state<<endl;
-  // }
- 
+  ops3x1spot=move(opresults3x1.s3x1spot); 
   
   bitset<64> myaction{};
   //第一タスク。ダブルリーチの連鎖で勝つor負けない
   for(auto& x2:mys3x1_x2[0][0]){//完成しているtobingoのx2について、勝てるか見る
     for(auto& pre:x2->pre){
       bitset<64> tempmyaction=pre.myact;
-      for(auto& x1:ops3x1_x1[0][0]){//放置すると完成する相手のx1で、countが自分よりも早いもの
-	if(x1->count<=x2->count){
-	  for(auto& next:x1->next) tempmyaction&=next.opact;
+      for(auto& x1:ops3x1_x1[0][0]){//放置すると完成する相手のx1で、mincountが自分のmincountよりも早いもの
+	if(x1->mincount<=x2->mincount){
+	  for(auto& next:x1->next) tempmyaction&=next;
 	}
       }
       myaction|=tempmyaction;
@@ -1163,19 +1159,19 @@ bitset<64> think(const vector<bitset<64> >& board){
     for(auto& x1:ops3x1_x1[0][0]){
       cout<<x1->now_state;
       for(auto& next:x1->next) {
-	myaction&=next.opact;
-	cout<<next.opact<<endl;
+	myaction&=next;
+	cout<<next<<endl;
       }
     }
     if(myaction.any()){
       cout<<"not attack my bingo"<<endl;
     }else{
-      //countがもっとも小さいものだけでも止める
+      //mincountがもっとも小さいものだけでも止める
       for(int count=1;count<s3x1loopnum_max;count++){
 	bitset<64> stopaction;
 	for(auto& x1:ops3x1_x1[0][0]){
-	  if(x1->count<=count){
-	    for(auto& next:x1->next) stopaction|=next.opact;
+	  if(x1->mincount<=count){
+	    for(auto& next:x1->next) stopaction|=next;
 	  }
 	}
 	stopaction&=canplace(board);
@@ -1216,7 +1212,7 @@ bitset<64> think(const vector<bitset<64> >& board){
   if(t_myaction.any()){
     bitset<64> t1_myaction=t_myaction;
     for(auto& x1:ops3x1_x1[1][0]){
-      for(auto& next:x1->next) t1_myaction&=next.opact;
+      for(auto& next:x1->next) t1_myaction&=next;
     }
     if(t1_myaction.any()){//止められる.この範囲で自分のs3x1の実現を目指す
       bitset<64> t1_2myaction{};
@@ -1293,7 +1289,7 @@ bitset<64> think(const vector<bitset<64> >& board){
   //第4タスク
   //置いたことにより今は満たしていない相手のx1のpreを満たすことは避けたい
   //なぜなら、相手のx1が完成することで、opactの拘束が新たに発生するため。
-  //少し保守的すぎるか。いい場所を取ろうとする意思に欠く。相手のpreを破壊するくらいがよいのかもしれない
+  //少し保守的すぎるか。いい場所を取ろうとする意思に欠く。
   bitset<64> t3_1_myaction=myaction;
   for(auto& x1:ops3x1_x1[0][1]){//まずはtobingoのx1を防ぐ
     for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
@@ -1345,6 +1341,8 @@ bitset<64> think(const vector<bitset<64> >& board){
   for(auto i=0;i<64;i++){
     if(myaction[i]&&goodpos[i]<maxnum)myaction[i]=0;
   }
+  cout<<"seems strong"<<endl;
+  cout<<myaction<<endl;
   
   //最後はランダム
   if(myaction.count()!=1){
@@ -1358,13 +1356,9 @@ int main(int argc ,char** argv){
   vector<bitset<64> > board(2);
   ///*board[0][2]=1;*/board[0][5]=1;board[0][6]=1;board[0][8]=1;//board[0][10]=1;
   //board[1][0]=1;board[1][1]=1;board[1][4]=1;board[1][9]=1;//board[1][12]=1;
-
-  //board[0][17]=1;board[0][19]=1;board[0][32]=1;board[0][35]=1;board[0][48]=1;board[0][51]=1;
-  //board[1][16]=1;board[1][18]=1;board[1][33]=1;board[1][34]=1;board[1][49]=1;board[1][50]=1;
-  //board[0][0]=1;board[0][1]=1;board[0][12]=1;board[0][13]=1;
-  //board[1][16]=1;board[1][17]=1;board[1][60]=1;board[1][61]=1;
   while(true){
     auto action=think(board);
+    cout<<"CPU action"<<endl;
     cout<<action<<endl;
     board[0]|=action;
     cout<<board<<endl;
