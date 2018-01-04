@@ -12,6 +12,8 @@
 ;;後攻の場合
 (setq *state* :wait)
 (default-pose)
+
+
 (ros::rate 10)
 (while (ros::ok)
   (case *state*
@@ -33,5 +35,6 @@
        (return))
     )
   )
+
 
 (exit)

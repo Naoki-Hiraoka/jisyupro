@@ -267,6 +267,6 @@
     </rosparam>
   </node>
   
-  <!-- <node pkg="jisyupro" type="think" name="think" respawn="true"/> -->
-
+  <node pkg="jisyupro" type="think" name="think" respawn="true"/>
+  <!-- <node pkg="jisyupro" type="think2" name="think" respawn="true"/> -->
 </launch>

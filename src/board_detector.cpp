@@ -86,14 +86,14 @@ class MyCvPkg{
     square_pub_[16].publish(squaremsg);
 
     //16分割する
-    RotatedRect boardpart{Point2f{-1,-1},Size2f{board.size.width*5/24,board.size.height*5/24},board.angle};
+    RotatedRect boardpart{Point2f{-1,-1},Size2f{board.size.width*1/6,board.size.height*1/6},board.angle};
     Point2f dwidth{boardpart.size.width*cos(boardpart.angle/180*(float)M_PI),boardpart.size.width*sin(boardpart.angle/180*(float)M_PI)};
     Point2f dheight{-boardpart.size.height*sin(boardpart.angle/180*(float)M_PI),boardpart.size.height*cos(boardpart.angle/180*(float)M_PI)};
     int square_num=0;
     for(int j=0;j<4;j++){
       for(int i=0;i<4;i++){
-	boardpart.center.x=board.center.x+dwidth.x*(i-1.5)+dheight.x*(j-1.5);
-	boardpart.center.y=board.center.y+dwidth.y*(i-1.5)+dheight.y*(j-1.5);
+	boardpart.center.x=board.center.x+dwidth.x*(i-1.5-1)+dheight.x*(j-1.5);
+	boardpart.center.y=board.center.y+dwidth.y*(i-1.5-1)+dheight.y*(j-1.5);
 	Point2f pts[4];
 	boardpart.points(pts);
 	//四角形を送信

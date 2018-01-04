@@ -194,6 +194,9 @@ target_link_libraries(board_state_recorder ${catkin_LIBRARIES})
 add_executable(think src/think.cpp)
 target_link_libraries(think ${catkin_LIBRARIES})
 
+add_executable(think2 src/think2.cpp)
+target_link_libraries(think2 ${catkin_LIBRARIES})
+
 target_link_libraries(jisyupro ${catkin_LIBRARIES})
 if(catkin_EXPORTED_LIBRARIES)
   add_dependencies(jisyupro ${catkin_EXPORTED_LIBRARIES})

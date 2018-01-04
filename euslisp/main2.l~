@@ -1,0 +1,29 @@
+
+
+;;後攻の場合
+(setq *state* :wait)
+(default-pose)
+
+(defun mainloop ()
+  (ros::rate 10)
+  (while (ros::ok)
+    (case *state*
+      (:wait (state-wait))
+      (:recog-opponent-action (state-recog-opponent-action))
+      (:check-opponent-action (state-check-opponent-action))
+      (:opponent-action-error (state-opponent-action-error))
+      (:victory-check-opponent (state-victory-check-opponent))
+      (:think (state-think))
+      (:wait-for-ball (state-wait-for-ball))
+      (:start-grasp (state-start-grasp))
+      (:put-ball (state-put-ball))
+      (:recog-my-action (state-recog-my-action))
+      (:check-my-action (state-check-my-action))
+      (:victory-check-me (state-victory-check-me))
+      (:win (state-win))
+      (:lose (state-lose))
+      (t (ros::ros-info "unknown-state")
+	 (return))
+      )
+    )
+  )

@@ -56,24 +56,30 @@
 	(send *ri* :angle-vector to 2000)
 	(send *ri* :wait-interpolation)
 	
-	;;(return-from place)
-	;;new 画像から誤差を修正する
-	(wait-armpos-time *my-color*)
-	(setq dif (v- (send (elt *pole-list* target) :worldpos) (get-armpos *my-color*)))
-	;; (when (and (> target 3) (< target 12))
-	;;   (setq dif (v- dif #f(-20.0 10.0 0)))) ;;重心がずれている
-	;; (when (< target 4)
-	;;   (setq dif (v- dif #f(-10.0 0.0 0)))) ;;重心がずれている
-	;; (when (> target 11)
-	;;   (setq dif (v- dif #f(-10.0 20.0 0))))	;;重心がずれている
-	(setf (elt dif 2) 0.0);;zは不要
-	;;(return-from place)
-	(when (pole-inverse-kinematics (v+ dif (send (elt *pole-list* target) :worldpos)))
-	  (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000)
-	  (send *ri* :wait-interpolation)
+	(let ((des (send (elt *pole-list* target) :worldpos))
+	      dif)
+	  (dotimes (i 3)
+	    ;;画像から誤差を修正する
+	    (wait-armpos-time *my-color*)
+	    (setq dif (v- (send (elt *pole-list* target) :worldpos) (get-armpos *my-color*)))
+	    ;; (when (and (> target 3) (< target 12))
+	    ;;   (setq dif (v- dif #f(-20.0 10.0 0)))) ;;重心がずれている
+	    ;; (when (< target 4)
+	    ;;   (setq dif (v- dif #f(-10.0 0.0 0)))) ;;重心がずれている
+	    ;; (when (> target 11)
+	    ;;   (setq dif (v- dif #f(-10.0 20.0 0))))	;;重心がずれている
+	    (setf (elt dif 2) 0.0);;zは不要
+	    (when (< (norm dif) 5);;誤差が5mm以下
+	      (return));;dotimes
+	    ;;(return-from place)
+	    (setq des (v+ des dif))
+	    (when (pole-inverse-kinematics des)
+	      (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000)
+	      (send *ri* :wait-interpolation)
+	      (unix::sleep 1)
+	      )
+	    )
 	  )
-	;;ここまで(new)
-	(unix::sleep 1)
 	(unless (send *ri* :simulation-modep)
 	  (send *ri* :stop-grasp)
 	  (send *ri* :wait-interpolation)
@@ -101,7 +107,7 @@
 ;;成功すればt
 (defun move-and-place (target)
   (wait-board-detector-time)
-  (when (and
+  (when (and;;この範囲は実機で要検討
 	 (< (elt (send (elt *pole-list* target) :worldpos) 0) 500)
 	 (> (elt (send (elt *pole-list* target) :worldpos) 0) 450))
     ;;動かずに済むに越したことはない
