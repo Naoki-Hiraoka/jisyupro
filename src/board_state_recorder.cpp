@@ -55,12 +55,16 @@ class MyCvPkg{
 	if(blue_count.header.stamp<calltime)loop=true;
 	loop_rate.sleep();
       }
-      //10msgの平均をとる
+      ROS_INFO_STREAM("ball_state_update_action 1");
+      //約10msgの平均をとる
+      //その色のコマが一つもない場合、トピックが全く来ないことに注意
+      //たまに空っぽのトピックが来ることがあることにも注意
       red_cb_num=0;
       blue_cb_num=0;
       fill(red_count.int32s.begin(),red_count.int32s.end(),0);
       fill(blue_count.int32s.begin(),blue_count.int32s.end(),0);
-      while((red_cb_num<10||blue_cb_num<10)&&ros::ok()){
+      ros::Time maxtime=ros::Time::now()+ros::Duration(5.0);//最大5秒
+      while((red_cb_num<10&&blue_cb_num<10)&&ros::ok()&&(ros::Time::now()<maxtime)){
 	ros::spinOnce();
 	pub_.publish(board_state);
 	if(server_.isPreemptRequested()){
@@ -70,11 +74,16 @@ class MyCvPkg{
 	}
 	loop_rate.sleep();
       }
-      for(int i=0; i<red_count.int32s.size();i++){
-	red_count.int32s[i]/=red_cb_num;
+      ROS_INFO_STREAM("ball_state_update_action 2");
+      if(red_cb_num!=0){
+	for(int i=0; i<red_count.int32s.size();i++){
+	  red_count.int32s[i]/=red_cb_num;
+	}
       }
-      for(int i=0; i<blue_count.int32s.size();i++){
-	blue_count.int32s[i]/=blue_cb_num;
+      if(blue_cb_num!=0){
+	for(int i=0; i<blue_count.int32s.size();i++){
+	  blue_count.int32s[i]/=blue_cb_num;
+	}
       }
       //しきい値以上の場所には球がある。board_stateを更新する
       //64個の要素。1(赤),-1(青),0(無)
@@ -143,9 +152,14 @@ class MyCvPkg{
   }
   
   void Callback_red(const jisyupro::Int32ArrayConstPtr &msg){
-    if(action){ 
+    red_count.header=msg->header;
+    if(action){
+      bool nonzero=false;
+      for(auto& x:msg->int32s){
+	if(x!=0)nonzero=true;
+      }
+      if(!nonzero)return;
       red_cb_num++;
-      red_count.header=msg->header;
       for(int i=0; i<red_count.int32s.size();i++){
 	red_count.int32s[i]+=msg->int32s[i];
       }
@@ -154,9 +168,14 @@ class MyCvPkg{
   }
 
   void Callback_blue(const jisyupro::Int32ArrayConstPtr &msg){
+    blue_count.header=msg->header;
     if(action){
+      bool nonzero=false;
+      for(auto& x:msg->int32s){
+	if(x!=0)nonzero=true;
+      }
+      if(!nonzero)return;
       blue_cb_num++;
-      blue_count.header=msg->header;
       for(int i=0; i<blue_count.int32s.size();i++){
 	blue_count.int32s[i]+=msg->int32s[i];
       }

@@ -7,9 +7,9 @@
 (require "package://jisyupro/euslisp/board_detector.l")
 
 ;;end-coordsを意味のある位置に
-;;(send (send *dxl-armed-turtlebot* :arm :end-coords) :move-to (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :translate (float-vector 117.1 5 -13.5))) :world)
-;;(send (send *dxl-armed-turtlebot* :arm :end-coords) :move-to (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :translate (float-vector 107.1 -5 -13.5))) :world)
-(send (send *dxl-armed-turtlebot* :arm :end-coords) :move-to (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :translate (float-vector 112.1 0 -13.5))) :world)
+;;(send (send *dxl-armed-turtlebot* :arm :end-coords) :move-to (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :translate (float-vector 117.1 5 -13.5))) :world);;中心
+;;(send (send *dxl-armed-turtlebot* :arm :end-coords) :move-to (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :translate (float-vector 112.1 0 -13.5))) :world);;穴の中心
+(send (send *dxl-armed-turtlebot* :arm :end-coords) :move-to (make-cascoords :coords (send (send (send *dxl-armed-turtlebot* :arm :end-coords :parent) :copy-worldcoords) :translate (float-vector 117.1 5 -13.5))) :world)
 
 ;;inverse-kinematics。
 ;;poleの根本のposを入れる。それの150mm以上上に移動する。
@@ -37,7 +37,6 @@
     )
   )
 
-(setq *place-target* 0)
 ;;place
 ;;置きたい座標を0~15で指定する。
 ;;アームを動かし、手を離し、戻る。
@@ -106,21 +105,29 @@
 ;;inverse-kinematicsを解けるように移動する
 ;;成功すればt
 (defun move-and-place (target)
+  ;;go-posは、行き過ぎることがよくあるので、注意して行う
+  ;;go-posは、5cmは動くみたい
   (wait-board-detector-time)
-  (when (and;;この範囲は実機で要検討
-	 (< (elt (send (elt *pole-list* target) :worldpos) 0) 500)
-	 (> (elt (send (elt *pole-list* target) :worldpos) 0) 450))
-    ;;動かずに済むに越したことはない
-    (when (place target)
-      (return-from move-and-place t)))
-  (dotimes (i 3)
+  (dotimes (i 10)
+    (when (and;;この範囲は実機で要検討
+	   (< (elt (send (elt *pole-list* target) :worldpos) 0) 470)
+	   (> (elt (send (elt *pole-list* target) :worldpos) 0) 460))
+      ;;動かずに済むに越したことはない
+      (when (place target)
+	(return-from move-and-place t)))
     ;;x=500前後がちょうどよいので移動してから試す
-    (send *ri* :go-pos (/ (- (elt (send (elt *pole-list* target) :worldpos) 0) 500) 1000) 0)
-    (send *ri* :wait-interpolation)
-    (unix::sleep 1)
-    (wait-board-detector-time)
-    (when (place target)
-      (return-from move-and-place t)))
+    (let ((dif (/ (- (elt (send (elt *pole-list* target) :worldpos) 0) 465) 1000)))
+      (when (> dif 0.1);;大きく前に動くときは、ボードに突っ込まなoいよう注意
+	(setq dif (- dif 0.05)))
+      (print dif)
+      (send *ri* :go-pos dif 0)
+      (send *ri* :go-velocity 0 0 0);;ブレーキが必要
+      (send *ri* :wait-interpolation)
+      (unix::sleep 1)
+      (wait-board-detector-time)
+      ;;(when (place target)
+      ;;(return-from move-and-place t))
+      ))
   ;;エラーを出すか(要検討)
   nil)
 

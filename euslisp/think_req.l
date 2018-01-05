@@ -42,6 +42,7 @@
   (let ((goal (instance jisyupro::thinkActiongoal :init)))
     (send goal :goal :board :int8s board_state)
     (send goal :goal :board :header :stamp (ros::time-now))
+    (send goal :goal :mycolor 1) 
     (send *ct* :send-goal goal)
     (send *ct* :wait-for-result)
     (setq *place-target* (send (send *ct* :get-result) :newpos)))

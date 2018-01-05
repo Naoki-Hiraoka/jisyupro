@@ -92,8 +92,8 @@ class MyCvPkg{
     int square_num=0;
     for(int j=0;j<4;j++){
       for(int i=0;i<4;i++){
-	boardpart.center.x=board.center.x+dwidth.x*(i-1.5-1)+dheight.x*(j-1.5);
-	boardpart.center.y=board.center.y+dwidth.y*(i-1.5-1)+dheight.y*(j-1.5);
+	boardpart.center.x=board.center.x+dwidth.x*(i-1.5-0.25)+dheight.x*(j-1.5);
+	boardpart.center.y=board.center.y+dwidth.y*(i-1.5-0.25)+dheight.y*(j-1.5);
 	Point2f pts[4];
 	boardpart.points(pts);
 	//四角形を送信

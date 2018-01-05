@@ -84,7 +84,7 @@
   (send *ri* :publish-sound :error)
   (while (ros::ok)
     (ros::spin-once)
-    (when (or (v= (send *ri* :state :button-vector) #f(0 3 0));;ボタン3が押されたら
+    (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら
 	      (get-button 3));;rostopic pub -1 /main/button std_msgs/Int32 3
       (send *ri* :publish-sound :button)
       (ball-state-undo);;巻き戻し
@@ -100,11 +100,15 @@
 (defun state-victory-check-opponent ()
   (ros::ros-info "victory-check-opponent")
   (case (victory-check)
-    (*my-color*
-     (setq *state* :win)
+    (1
+     (if (> *my-color* 0)
+	 (setq *state* :win)
+       (setq *state* :lose))
      (return-from state-victory-check-opponent))
-    ((- *my-color*)
-     (setq *state* :lose)
+    (-1
+     (if (< *my-color* 0)
+	 (setq *state* :win)
+       (setq *state* :lose))
      (return-from state-victory-check-opponent))
     (nil
      (setq *state* :think)
@@ -114,11 +118,13 @@
 
 ;;次の一手を考える *changepos* *ball-vector*を利用
 (setq *ct* (instance ros::simple-action-client :init "/think" jisyupro::thinkAction))
+;;(setq *place-target* 0)
 (defun state-think ()
   (ros::ros-info "state-think")
   (let ((goal (instance jisyupro::thinkActiongoal :init)))
     (send goal :goal :board :int8s *ball-vector*)
     (send goal :goal :board :header :stamp (ros::time-now))
+    (send goal :goal :mycolor *my-color*)
     (send *ct* :send-goal goal)
     (send *ct* :wait-for-result)
     (setq *place-target* (send (send *ct* :get-result) :newpos)))
@@ -134,7 +140,8 @@
   (send *ri* :publish-sound :recharge)
   (ros::ros-info "wait-for-ball")
   (unless (send *ri* :simulation-modep)
-      (send *ri* :stop-grasp))
+      (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000 :gripper-controller)
+      (send *ri* :wait-interpolation))
   (while (ros::ok)
     (ros::spin-once)
     (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら
@@ -182,6 +189,7 @@
   (if (move-and-place (floor (/ *place-target* 4)))
       ;;置く行動そのものは成功
       (progn
+	(unix::sleep 1);;たまにまだ手が写っている
 	(setq *state* :recog-my-action)
 	(return-from state-put-ball))
     ;;inverse-kinematicsそのものに失敗
@@ -219,6 +227,7 @@
 	  (send *ri* :publish-sound :error)
 	  (ball-state-undo);;巻き戻し
 	  (draw-balls)
+	  (unix::sleep 1);;wait開始時のsoundでerror音が消えないように
 	  (setq *state* :wait-for-ball)
 	  (return-from state-check-my-action)))
     ;;問題ある場合
@@ -227,6 +236,7 @@
       (send *ri* :publish-sound :error)
       (ball-state-undo);;巻き戻し
       (draw-balls)
+      (unix::sleep 1)
       (setq *state* :wait-for-ball)
       (return-from state-check-my-action))
     )
@@ -235,11 +245,15 @@
 (defun state-victory-check-me ()
   (ros::ros-info "victory-check-me")
   (case (victory-check)
-    (*my-color*
-     (setq *state* :win)
+    (1
+     (if (> *my-color* 0)
+	 (setq *state* :win)
+       (setq *state* :lose))
      (return-from state-victory-check-me))
-    ((- *my-color*)
-     (setq *state* :lose)
+    (-1
+     (if (< *my-color* 0)
+	 (setq *state* :win)
+       (setq *state* :lose))
      (return-from state-victory-check-me))
     (nil
      (setq *state* :wait)
@@ -250,7 +264,14 @@
 (defun state-win ()
   (send *ri* :publish-sound :on)
   (ros::ros-info "I win !")
+  (send *dxl-armed-turtlebot* :reset-pose2)
   (while (ros::ok)
+    (send *dxl-armed-turtlebot* :angle-vector #f(0.0 150.0 -90.0 0.0 0.0 0.0 0.0))
+    (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000)
+    (send *ri* :wait-interpolation)
+    (send *dxl-armed-turtlebot* :angle-vector #f(0.0 60.0 -90.0 0.0 0.0 0.0 0.0))
+    (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000)
+    (send *ri* :wait-interpolation)
     (ros::spin-once)
     (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら
 	      (get-button 3));;rostopic pub -1 /main/button std_msgs/Int32 3
@@ -267,6 +288,9 @@
 (defun state-lose ()
   (send *ri* :publish-sound :of)
   (ros::ros-info "You win !")
+  (send *dxl-armed-turtlebot* :angle-vector #f(90.0 0.0 -70.0 0.0 0.0 -180.0 0.0))
+  (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 5000)
+  (send *ri* :wait-interpolation)
   (while (ros::ok)
     (ros::spin-once)
     (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら

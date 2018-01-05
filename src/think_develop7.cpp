@@ -1,20 +1,4 @@
-#include <ros/ros.h>
-#include<actionlib/server/simple_action_server.h>
-#include<jisyupro/Int8Array.h>
-#include<visualization_msgs/MarkerArray.h>
-#include<jisyupro/thinkAction.h>
-#include<vector>
-#include<string>
-#include<cmath>
-#include<algorithm>
-#include<random>
-
-#include <iostream>
-#include <bitset> //bitset
-#include <memory> //shared_ptr
-#include<thread>
-#include<future>
-
+//g++ -o think_develop6 think_develop6.cpp -std=c++14 -lpthread
 /*
   仕組み
   *終了状態からの逆算を探索する。
@@ -32,7 +16,17 @@
 　　第３タスク以降は、読む手数N以上のコンボを防ぐorいつの間にか自分が作ることを目標に、製作者のセンスで設定した。<-ここには、機械学習の入る余地がありそう
  */
 
+#include <iostream>
+#include <bitset> //bitset
+#include <vector> //vector
+#include <memory> //shared_ptr
+#include <algorithm>
+#include<random>
+#include<thread>
+#include<future>
+
 using namespace std;
+
 /*要求の読み方
   vector<bitset<64> >
   [0]自分のコマ
@@ -468,7 +462,7 @@ bitset<64> canplace(const vector<bitset<64> >& board) noexcept{
 
 //myactionの中から一つに絞る
 bitset<64> random1(const bitset<64>& target) noexcept{
-  static Rand_int rand(0,63,static_cast<int>(ros::Time::now().sec));
+  static Rand_int rand(0,63/*,static_cast<int>(ros::Time::now().sec)*/);
   bitset<64> _target{};
   if(!target.any()){
     cout<<"target is empty"<<endl;
@@ -913,6 +907,19 @@ void unique_x1(vector<shared_ptr<state> >& _x1){
 	}
 	if(!same) (*_state2)->pre.push_back(move(pre1));
       }
+      /*
+      for(auto& next1:(*_state)->next){
+	bool same=false;
+	for(auto& next2:(*_state2)->next){
+	  //if(next1.nextstate==next2.nextstate){
+	  if(next1==next2){
+	    same=true;
+	    break;
+	  }
+	}
+	if(!same) (*_state2)->next.push_back(move(next1));
+      }
+      */
       (*_state2)->count=min((*_state)->count,(*_state2)->count);
       (*_state2)->mincount=min((*_state)->mincount,(*_state2)->mincount);
       //(*_state2)->type放置で問題ない
@@ -1188,8 +1195,8 @@ bitset<64> think(const vector<bitset<64> >& board){
   vector<vector<vector<shared_ptr<state> > > > ops3x1_x1{};
   bitset<16> ops3x1spot{};
 
-  int bingoloopnum_max=6;//max7
-  int s3x1loopnum_max=5;//max6
+  int bingoloopnum_max=6;
+  int s3x1loopnum_max=5;
   auto mybingofu=async(launch::async,looptask,mystart,bingoloopnum_max,true,0);
   auto opbingofu=async(launch::async,looptask,opstart,bingoloopnum_max,false,0);
   auto mys3x1fu=async(launch::async,looptask,mystart,s3x1loopnum_max,true,1);
@@ -1413,55 +1420,51 @@ bitset<64> think(const vector<bitset<64> >& board){
     if(myaction.count()==0)myaction=canplace(board);
     myaction=random1(myaction);
   }
-  cout<<myaction<<endl;
-  
   return myaction;
 }
 
-class MyCvPkg{
-  ros::NodeHandle nh_;
-  ros::NodeHandle private_nh_;
-  actionlib::SimpleActionServer<jisyupro::thinkAction> server_;
-  jisyupro::thinkFeedback feedback_;
-  jisyupro::thinkResult result_;
-  
-  void action_callback(const jisyupro::thinkGoalConstPtr &goal){
-    /*
-    if(server_.isPreemptRequested()){
-      server_.setPreempted();
+int main(int argc ,char** argv){
+  vector<bitset<64> > board(2);
+  ///*board[0][2]=1;*/board[0][5]=1;board[0][6]=1;board[0][8]=1;//board[0][10]=1;
+  //board[1][0]=1;board[1][1]=1;board[1][4]=1;board[1][9]=1;//board[1][12]=1;
+  while(true){
+    auto action=think(board);
+    cout<<"CPU action"<<endl;
+    cout<<action<<endl;
+    board[0]|=action;
+    cout<<board<<endl;
+    if(victory(board)){
+      cout<<"CPU win"<<endl;
+      return 0;
     }
-    server_.publishFeedback(feedback_);
-    */
-    ROS_INFO_STREAM("think_action_start");
-    vector<bitset<64> > board(2);
-    int mycolor=goal->mycolor;
-    int opcolor=-mycolor;
-    for(int i=0;i<64;i++){
-      if(goal->board.int8s[i]==mycolor)board[0][i]=1;
-      if(goal->board.int8s[i]==opcolor)board[1][i]=1;
+    
+    while(true){
+      int youraction;
+      cout<<"0~63"<<endl;
+      cin>>youraction;
+      if(0>youraction||youraction>63){
+	continue;
+      }
+      bitset<64> _youraction{};
+      _youraction[youraction]=1;
+      bitset<64> canplace{};
+      for(int x=0;x<16;x++){
+	for(int z=0;z<4;z++){
+	  if(board[0][x*4+z]||board[1][x*4+z])continue;
+	  else{
+	    canplace[x*4+z]=1;
+	    break;
+	  }
+	}
+      }
+      if(!(_youraction&canplace).any())continue;
+      board[1]|=_youraction;
+      cout<<board<<endl;
+      if(victory(board)){
+	cout<<"YOU win"<<endl;
+	return 0;
+      }
+      break;
     }
-    bitset<64> action=think(board);
-    for(int i=0;i<64;i++){
-      if(action[i]==1)result_.newpos=i;
-    }
-    server_.setSucceeded(result_);
-    ROS_INFO_STREAM("think_action_Finished");
-    return;
-  }
-public:
-  MyCvPkg(): nh_{}, private_nh_("~"), server_{private_nh_,"",boost::bind(&MyCvPkg::action_callback,this,_1),false} {
-    //private_nh_.param<int>("thre", thre,20);
-    server_.start();
-    ROS_INFO_STREAM("think prepared");
-  }
-};
-
-int main(int argc,char **argv){
-  ros::init(argc,argv,"think");
-  MyCvPkg mcp{};
-  ros::Rate loop_rate(10);
-  while(ros::ok()){
-    ros::spinOnce();
-    loop_rate.sleep();
   }
 }
