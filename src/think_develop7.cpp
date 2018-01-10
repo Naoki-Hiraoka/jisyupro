@@ -975,11 +975,14 @@ void del_x1(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >&
 //me: boardからnew_x2は削除or result[0][N]/result[1][N]へ
 void del_x2(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >& new_x2,vector<vector<vector<shared_ptr<state> > > >& result,bitset<16>& s3x1spot) noexcept{
   if(me){//preの現在からのターン数によって分類
-    for(auto& x2:new_x2){
+    for(auto& x2:new_x2){      
       if(((~board[0])&x2->now_state[0]).any()||((~board[0])&(~board[1])&(x2->now_state[1])).any()||((board[0]|board[1])&(x2->now_state[2])).any()){//now_stateを満たしていない
+
 	if((x2->type&tos3x1).any()&&(s3x1spot&x2->s3x1spot).any()){//すでに完成しているs3x1を作っても意味はないので記録しない
 	  x2=nullptr;
+	  continue;
 	}
+
 	vector<_pre> newpre{};
 	for(auto& pre:x2->pre){
 	  int precount=countpre_x2(board,me,pre.board);
@@ -1093,10 +1096,11 @@ loopresult s3x1loop(const vector<bitset<64> >& board,int loopnum_max,bool me,int
     }
     //x1について重複をまとめる
     unique_x1(_x1);
-
+    
     //new_new_x2について
     //new_new_x2重複をまとめる
     unique(new_new_x2);
+
     for(auto& x2:new_new_x2){
       check_x2pre(board,loopnum,me,x2,result,s3x1spot);
     }
@@ -1358,11 +1362,41 @@ bitset<64> think(const vector<bitset<64> >& board){
   
   
   //第4タスク
+  //相手のx1のpreを破壊すると安心o
   //置いたことにより今は満たしていない相手のx1のpreを満たすことは避けたい
   //なぜなら、相手のx1が完成することで、opactの拘束が新たに発生するため。
-  //少し保守的すぎるか。いい場所を取ろうとする意思に欠く。
+
+  //pre.board[2][場所]==1かつmyaction[場所]==1だと強い。相手のpreを破壊している
+  bitset<64> t3_1_0_myaction{};
+  for(auto& x1:ops3x1_x1[0][1]){//まずはtobingoのx1を破壊する
+    //ただし、あらゆる敵のコマ2つが並んだところに反応しても強くない.第5タスクと重複する。そのため、count!=1
+    if(x1->count==1)continue;
+    for(auto& pre:x1->pre){//pre.board[2][場所]==1かつmyaction[場所]==1だと強い。相手のpreを破壊している
+      t3_1_0_myaction|=pre.board[2];
+    }
+  }
+  t3_1_0_myaction&=myaction;
+  if(t3_1_0_myaction.any()){
+    myaction=t3_1_0_myaction;
+    cout<<"destroy op's tobingopre"<<endl;
+  }
+  else myaction=myaction;
+
+  t3_1_0_myaction.reset();
+  for(auto& x1:ops3x1_x1[1][1]){//まずはtos3x1のx1を破壊する
+    for(auto& pre:x1->pre){//pre.board[2][場所]==1かつmyaction[場所]==1だと強い。相手のpreを破壊している
+      t3_1_0_myaction|=pre.board[2];
+    }
+  }
+  t3_1_0_myaction&=myaction;
+  if(t3_1_0_myaction.any()){
+    myaction=t3_1_0_myaction;
+    cout<<"destroy op's tos3x1pre"<<endl;
+  }
+  else myaction=myaction;
+  
   bitset<64> t3_1_myaction=myaction;
-  for(auto& x1:ops3x1_x1[0][1]){//まずはtobingoのx1を防ぐ
+  for(auto& x1:ops3x1_x1[0][1]){//次にtobingoのx1を防ぐ
     for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ
       t3_1_myaction&=(~pre.board[1]);
     }
@@ -1425,8 +1459,8 @@ bitset<64> think(const vector<bitset<64> >& board){
 
 int main(int argc ,char** argv){
   vector<bitset<64> > board(2);
-  ///*board[0][2]=1;*/board[0][5]=1;board[0][6]=1;board[0][8]=1;//board[0][10]=1;
-  //board[1][0]=1;board[1][1]=1;board[1][4]=1;board[1][9]=1;//board[1][12]=1;
+  board[0][1]=1;board[0][3]=1;board[0][4]=1;board[0][10]=1;board[0][15]=1;board[0][61]=1;board[0][60]=1;board[0][58]=1;board[0][56]=1;board[0][54]=1;board[0][53]=1;board[0][48]=1;
+  board[1][0]=1;board[1][2]=1;board[1][5]=1;board[1][6]=1;board[1][8]=1;board[1][9]=1;board[1][12]=1;board[1][13]=1;board[1][14]=1;board[1][28]=1;board[1][57]=1;board[1][55]=1;board[1][52]=1;
   while(true){
     auto action=think(board);
     cout<<"CPU action"<<endl;

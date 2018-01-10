@@ -224,11 +224,11 @@
   <node pkg="nodelet" type="nodelet" name="multi_plane_extraction_arm_red" respawn="true"
 	args="load jsk_pcl/MultiPlaneExtraction pcl_manager">
     <remap from="~input" to="hsi_filter_red/output"/>
-    <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/>
+    <!-- <remap from="~input_coefficients" to="/multi_plane_estimate/output/coefficients"/> -->
     <remap from="~input_polygons" to="board_detector/polygon"/>
     <!-- <remap from="~input_polygons" to="/multi_plane_estimate/output/polygons"/> -->
     <rosparam subst_value="true">
-      min_height: -0.400
+      min_height: -0.500
       max_height: -0.150
       use_indices: False
       use_coefficients: False

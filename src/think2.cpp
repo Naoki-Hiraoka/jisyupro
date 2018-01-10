@@ -972,6 +972,7 @@ void del_x2(const vector<bitset<64> >& board,bool me,vector<shared_ptr<state> >&
       if(((~board[0])&x2->now_state[0]).any()||((~board[0])&(~board[1])&(x2->now_state[1])).any()||((board[0]|board[1])&(x2->now_state[2])).any()){//now_stateを満たしていない
 	if((x2->type&tos3x1).any()&&(s3x1spot&x2->s3x1spot).any()){//すでに完成しているs3x1を作っても意味はないので記録しない
 	  x2=nullptr;
+	  continue;
 	}
 	vector<_pre> newpre{};
 	for(auto& pre:x2->pre){
@@ -1351,9 +1352,41 @@ bitset<64> think(const vector<bitset<64> >& board){
   
   
   //第4タスク
+  //相手のx1のpreを破壊すると安心
   //置いたことにより今は満たしていない相手のx1のpreを満たすことは避けたい
   //なぜなら、相手のx1が完成することで、opactの拘束が新たに発生するため。
   //少し保守的すぎるか。いい場所を取ろうとする意思に欠く。
+
+  //pre.board[2][場所]==1かつmyaction[場所]==1だと強い。相手のpreを破壊している
+  bitset<64> t3_1_0_myaction{};
+  for(auto& x1:ops3x1_x1[0][1]){//まずはtobingoのx1を破壊する
+     //ただし、あらゆる敵のコマ2つが並んだところに反応しても強くない.第5タスクと重複する。そのため、count!=1
+    if(x1->count==1)continue;
+    for(auto& pre:x1->pre){//pre.board[2][場所]==1かつmyaction[場所]==1だと強い。相手のpreを破壊している
+      t3_1_0_myaction|=pre.board[2];
+    }
+  }
+  t3_1_0_myaction&=myaction;
+  if(t3_1_0_myaction.any()){
+    myaction=t3_1_0_myaction;
+    cout<<"destroy op's tobingopre"<<endl;
+  }
+  else myaction=myaction;
+
+  t3_1_0_myaction.reset();
+  for(auto& x1:ops3x1_x1[1][1]){//まずはtos3x1のx1を破壊する
+    for(auto& pre:x1->pre){//pre.board[2][場所]==1かつmyaction[場所]==1だと強い。相手のpreを破壊している
+      t3_1_0_myaction|=pre.board[2];
+    }
+  }
+  t3_1_0_myaction&=myaction;
+  if(t3_1_0_myaction.any()){
+    myaction=t3_1_0_myaction;
+    cout<<"destroy op's tos3x1pre"<<endl;
+  }
+  else myaction=myaction;
+
+  
   bitset<64> t3_1_myaction=myaction;
   for(auto& x1:ops3x1_x1[0][1]){//まずはtobingoのx1を防ぐ
     for(auto& pre:x1->pre){//pre.board[1][場所]==1 かつ myaction[場所]==1だとだめ

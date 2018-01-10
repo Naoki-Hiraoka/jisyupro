@@ -13,6 +13,7 @@
 ;;debug用に端末から相手の置いた位置を表すtopicを手動で送り、板の状況の認識を飛ばして勝利判定に移ることもできる
 ;;(debug用に端末から現在の盤の状況を表すtopicを手動で送り、盤の状況の内部状態を一新することもできる)(未実装)
 (defun state-wait ()
+  (send *ri* :publish-sound :recharge)
   (ros::ros-info "waiting for opponent-action")
   (setq *ball-state-teach* t);;rostopic pub -1 /main/board_state_teach std_msgs/Int32 63
   (setq *ball-state-renewal* t)
@@ -82,18 +83,25 @@
 (defun state-opponent-action-error ()
   (ros::ros-info "opponent-action-error")
   (send *ri* :publish-sound :error)
-  (while (ros::ok)
-    (ros::spin-once)
-    (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら
-	      (get-button 3));;rostopic pub -1 /main/button std_msgs/Int32 3
-      (send *ri* :publish-sound :button)
-      (ball-state-undo);;巻き戻し
-      (draw-balls)
-      (setq *state* :wait)
-      (return-from state-opponent-action-error))
-    (x::window-main-one)
-    (ros::sleep)
-    )
+  ;; (while (ros::ok)
+  ;;   (ros::spin-once)
+  ;;   (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら
+  ;; 	      (get-button 3));;rostopic pub -1 /main/button std_msgs/Int32 3
+  ;;     (send *ri* :publish-sound :button)
+  ;;     (ball-state-undo);;巻き戻し
+  ;;     (draw-balls)
+  ;;     (setq *state* :wait)
+  ;;     (return-from state-opponent-action-error))
+  ;;   (x::window-main-one)
+  ;;   (ros::sleep)
+  ;;   )
+
+  ;;new
+  (unix::sleep 1);;音が上書きされて消えないように
+  (ball-state-undo);;巻き戻し
+  (draw-balls)
+  (setq *state* :wait)
+  (return-from state-opponent-action-error)
   )
 
 ;;勝利判定
@@ -126,7 +134,9 @@
     (send goal :goal :board :header :stamp (ros::time-now))
     (send goal :goal :mycolor *my-color*)
     (send *ct* :send-goal goal)
+    (print "wait-tor-result")
     (send *ct* :wait-for-result)
+    (print "waited")
     (setq *place-target* (send (send *ct* :get-result) :newpos)))
   (setq *state* :wait-for-ball)
   (return-from state-think)
@@ -139,12 +149,17 @@
 (defun state-wait-for-ball ()
   (send *ri* :publish-sound :recharge)
   (ros::ros-info "wait-for-ball")
+  
   (unless (send *ri* :simulation-modep)
-      (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000 :gripper-controller)
-      (send *ri* :wait-interpolation))
+    ;;手を開いてヒトに合図
+    (send *ri* :stop-grasp)
+    (send *ri* :wait-interpolation)
+    
+    (send *ri* :angle-vector (send *dxl-armed-turtlebot* :angle-vector) 1000 :gripper-controller)
+    (send *ri* :wait-interpolation))
   (while (ros::ok)
     (ros::spin-once)
-    (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら
+    (when (or (v= (send *ri* :state :button-vector) #f(0 0 1));;ボタン3が押されたら相手のアクションを待つところまで戻る
 	      (get-button 3));;rostopic pub -1 /main/button std_msgs/Int32 3
       (send *ri* :publish-sound :button)
       (ball-state-undo);;巻き戻し
@@ -152,7 +167,7 @@
       (setq *state* :wait)
       (return-from state-wait-for-ball)
       )
-    (when (or (v= (send *ri* :state :button-vector) #f(0 1 0));;ボタン2が押されたら
+    (when (or (v= (send *ri* :state :button-vector) #f(0 1 0));;ボタン2が押されたらヒトが代わりにボールを置いてあげたことにできる
 	      (get-button 2));;rostopic pub -1 /main/button std_msgs/Int32 2
       (send *ri* :publish-sound :button)
       (ball-state-teach *place-target* *my-color*)
@@ -160,7 +175,7 @@
       (draw-balls)
       (setq *state* :check-my-action)
       (return-from state-wait-for-ball))
-    (when (or (v= (send *ri* :state :button-vector) #f(1 0 0));;ボタン1が押されたら
+    (when (or (v= (send *ri* :state :button-vector) #f(1 0 0));;ボタン1が押されたらボールを掴んで置く
 	      (get-button 1));;rostopic pub -1 /main/button std_msgs/Int32 1
       (send *ri* :publish-sound :button)
       (setq *state* :start-grasp)
